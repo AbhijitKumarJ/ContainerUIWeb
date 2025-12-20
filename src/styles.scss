@@ -1,0 +1,45 @@
+/* Global Styles */
+:root {
+  /* Ubuntu Colors */
+  --desktop-bg-color: #2c001e;
+  /* Aubergine */
+  --taskbar-bg-color: #1a1a1a;
+  --window-bg-color: #3e3e3e;
+  /* Dark Gray */
+  --text-color: #ffffff;
+  --accent-color: #e95420;
+  /* Ubuntu Orange */
+  --taskbar-height: 48px;
+  --font-family: 'Ubuntu', 'Segoe UI', sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  background-color: var(--desktop-bg-color);
+  color: var(--text-color);
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #dd4814;
+}

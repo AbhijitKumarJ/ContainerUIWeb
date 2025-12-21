@@ -1,4 +1,4 @@
-# ContainerUIWeb
+# Container Web Desktop
 
 A web-based desktop environment for managing Docker containers. This project simulates a native OS experience (Ubuntu-style) within a browser, interacting with the underlying container via a Python FastAPI backend.
 
@@ -15,7 +15,7 @@ A web-based desktop environment for managing Docker containers. This project sim
 ### Applications
 | App | Status | Description |
 | :--- | :---: | :--- |
-| **File Explorer** | ✅ Done | Fully functional with basic CRUD operations for files. |
+| **File Explorer** | 🚧 Partial | UI implemented with mock file system. Actual IO pending. |
 | **Terminal** | 🚧 Partial | Functional UI & basic commands (`ls`, `pwd`). Backend shell pending. |
 | **Task Manager** | 🚧 Partial | UI implemented with mock process data. |
 | **Text Editor** | ✅ Done | Fully functional text editor styling with mock save. |
@@ -28,59 +28,20 @@ A web-based desktop environment for managing Docker containers. This project sim
 | **Ubuntu Theme** | ✅ Done | Aubergine/Orange palette, font styling, scrollbars. |
 | **Responsiveness** | ✅ Done | Desktop adapts layout to browser window size. |
 
-## Prerequisites
+## 🛠️ Usage
 
-- Python 3.11+
-- Node.js & Angular CLI (for development)
-- Docker & Docker Compose (optional, for containerized run)
+### Prerequisites
+- Node.js & npm
+- Angular 19+
 
-## Quick Start (Docker)
+### Running the Development Server
+```bash
+ng serve
+```
+Navigate to `http://localhost:4200/`.
 
-1. Navigate to the Backend directory:
-   ```bash
-   cd Backend
-   ```
-
-2. Run with Docker Compose:
-   ```bash
-   docker-compose up --build
-   ```
-
-3. Open your browser at [http://localhost:8000](http://localhost:8000).
-
-## Manual Setup
-
-### Backend
-
-1. Navigate to `Backend`:
-   ```bash
-   cd Backend
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the server:
-   ```bash
-   python main.py
-   ```
-
-### Frontend
-
-1. Navigate to project root.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Build the Angular app (outputs to Backend static folder):
-   ```bash
-   ng build
-   ```
-4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000).
-
-## 🔮 Future Roadmap 
-- [ ] **Backend Integration:** Connect `Terminal` and improve `File Explorer`, `Text Editor` for real Docker container via FastAPI.
+## 🔮 Future Roadmap (Phase 2 & Beyond)
+- [ ] **Backend Integration:** Connect `Terminal` and `File Explorer` to real Docker container via FastAPI.
 - [ ] **Real File System:** Implement CRUD operations for files.
 - [ ] **Process Control:** Ability to kill actual container processes from Task Manager.
 - [ ] **Settings App:** Allow user to change wallpaper and theme colors.
-- [ ] **Extension System** Allow custom programs to be added by uploading zip file like standalone html for markdown reader and so on.

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 import os
-from .routers import filesystem
+from .routers import filesystem, terminal
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
@@ -18,7 +18,8 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(filesystem.router)
+app.include_router(filesystem.router,prefix="/api/filesystem")
+app.include_router(terminal.router,prefix="/api/terminal")
 
 # Templates
 # Ensure templates directory is correctly located relative to this file

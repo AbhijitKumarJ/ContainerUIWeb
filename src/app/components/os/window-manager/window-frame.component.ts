@@ -11,9 +11,12 @@ import { WindowManagerService } from '../../../services/window-manager.service';
   template: `
     <div class="window-frame"
          cdkDrag
+         [cdkDragDisabled]="config.isMaximized"
          [cdkDragBoundary]="'.desktop-wallpaper'"
          [cdkDragFreeDragPosition]="config.position"
          [style.z-index]="config.zIndex"
+         [style.width.px]="config.isMaximized ? null : config.size.width"
+         [style.height.px]="config.isMaximized ? null : config.size.height"
          [class.active]="config.isActive"
          [class.minimized]="config.isMinimized"
          [class.maximized]="config.isMaximized"
@@ -84,8 +87,9 @@ import { WindowManagerService } from '../../../services/window-manager.service';
       &.maximized {
         top: 0 !important;
         left: 0 !important;
-        width: 100% !important;
-        height: calc(100% - var(--taskbar-height)) !important;
+        width: 100vw !important;
+        height: calc(100vh - 48px) !important;
+        max-height: none !important;
         transform: none !important;
         border-radius: 0;
       }

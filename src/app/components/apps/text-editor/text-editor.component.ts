@@ -1,12 +1,14 @@
 import { Component, Input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { FileSystemService } from '../../../services/file-system.service';
+import { inject } from '@angular/core';
 
 @Component({
-    selector: 'app-text-editor',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
-    template: `
+  selector: 'app-text-editor',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
     <div class="editor-container">
       <div class="toolbar">
         <button class="tool-btn" (click)="save()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
@@ -18,7 +20,7 @@ import { FormsModule } from '@angular/forms';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .editor-container {
       display: flex;
       flex-direction: column;
@@ -81,28 +83,64 @@ import { FormsModule } from '@angular/forms';
   `]
 })
 export class TextEditorComponent {
-    @Input() initialContent = '';
-    @Input() initialFileName = 'Untitled.txt';
+  @Input() initialContent = '';
+  @Input() initialFileName = 'Untitled.txt';
+  @Input() currentPath: string[] = [];
 
-    content = '';
-    fileName = signal('Untitled.txt');
+  private fs = inject(FileSystemService);
 
-    ngOnInit() {
-        this.content = this.initialContent;
-        this.fileName.set(this.initialFileName);
+  content = '';
+  fileName = signal('Untitled.txt');
+
+  ngOnInit() {
+    this.fileName.set(this.initialFileName);
+
+    // If content is provided explicitly, use it.
+    if (this.initialContent) {
+      this.content = this.initialContent;
     }
-
-    save() {
-        // Mock Save
-        console.log('Saving file:', this.fileName(), this.content);
-        alert(`File "${this.fileName()}" saved!`);
+    // Otherwise, if we have a path/filename context, try to read from FS
+    else if (this.currentPath && this.initialFileName && this.initialFileName !== 'Untitled.txt') {
+      this.loadFile();
     }
+  }
 
-    getLines() {
-        return this.content.split('\n').length;
-    }
+  loadFile() {
+    this.fs.readFile(this.currentPath, this.initialFileName).subscribe({
+      next: (res: { content: string }) => {
+        this.content = res.content;
+      },
+      error: (err: any) => {
+        console.error('Failed to load file:', err);
+        this.content = 'Error loading file content.';
+      }
+    });
+  }
 
-    getChars() {
-        return this.content.length;
+  save() {
+    if (this.currentPath && this.fileName() !== 'Untitled.txt') {
+      this.fs.writeFile(this.currentPath, this.fileName(), this.content).subscribe({
+        next: () => {
+          console.log('File saved successfully');
+          alert(`File "${this.fileName()}" saved!`);
+        },
+        error: (err) => {
+          console.error('Failed to save file:', err);
+          alert('Failed to save file.');
+        }
+      });
+    } else {
+      console.log('Saving new file not implemented yet (needs Save As dialog)', this.fileName());
+      // For now just alert mock
+      alert(`File "${this.fileName()}" saved (simulation)!`);
     }
+  }
+
+  getLines() {
+    return this.content.split('\n').length;
+  }
+
+  getChars() {
+    return this.content.length;
+  }
 }

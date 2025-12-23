@@ -10,14 +10,14 @@ A web-based desktop environment for managing Docker containers. This project sim
 | **Desktop Environment** | ✅ Done | Ubuntu-style wallpaper (Mesh Gradient), draggable icons. |
 | **Taskbar** | ✅ Done | Bottom bar with "Show Applications" grid, window tabs, clock. |
 | **Start Menu** | ✅ Done | Full-screen App Grid overlay with search bar. |
-| **Window Manager** | ✅ Done | Draggable, minimize/restore, focus management, dynamic sizing. |
+| **Window Manager** | ✅ Done | Draggable, resizable, minimize/restore, focus management, dynamic sizing. |
 
 ### Applications
 | App | Status | Description |
 | :--- | :---: | :--- |
 | **File Explorer** | ✅ Done | Fully functional with basic CRUD operations for files. |
-| **Terminal** | 🚧 Partial | Functional UI & basic commands (`ls`, `pwd`). Backend shell pending. |
-| **Task Manager** | 🚧 Partial | UI implemented with mock process data. |
+| **Terminal** | ✅ Done | Real backend execution, directory navigation, and OS-specific command translation. |
+| **Task Manager** | ✅ Done | Real-time system process monitoring using live backend data. |
 | **Text Editor** | ✅ Done | Fully functional text editor styling with mock save. |
 | **Browser** | ✅ Done | Iframe-based internal browser with address bar. |
 | **Calculator** | ✅ Done | Fully functional standard calculator. |
@@ -67,7 +67,7 @@ A web-based desktop environment for managing Docker containers. This project sim
 
 ### Frontend
 
-1. Navigate to project root.
+1. Navigate to `Frontend`.
 2. Install dependencies:
    ```bash
    npm install
@@ -79,8 +79,8 @@ A web-based desktop environment for managing Docker containers. This project sim
 4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000).
 
 ## 🔮 Future Roadmap 
-- [ ] **Backend Integration:** Connect `Terminal` and improve `File Explorer`, `Text Editor` for real Docker container via FastAPI.
-- [ ] **Real File System:** Implement CRUD operations for files.
+- [x] **Backend Integration:** Connect `Terminal` and `Process Manager` to real system.
+- [ ] **Real File System:** Implement CRUD operations for files (File Explorer improvements).
 - [ ] **Process Control:** Ability to kill actual container processes from Task Manager.
 - [ ] **Settings App:** Allow user to change wallpaper and theme colors.
 - [ ] **Extension System** Allow custom programs to be added by uploading zip file like standalone html for markdown reader and so on.

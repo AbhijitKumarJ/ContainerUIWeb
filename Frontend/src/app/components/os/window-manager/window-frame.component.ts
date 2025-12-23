@@ -14,6 +14,7 @@ import { WindowManagerService } from '../../../services/window-manager.service';
          [cdkDragDisabled]="config.isMaximized"
          [cdkDragBoundary]="'.desktop-wallpaper'"
          [cdkDragFreeDragPosition]="config.position"
+         (cdkDragEnded)="onDragEnd($event)"
          [style.z-index]="config.zIndex"
          [style.width.px]="config.isMaximized ? null : config.size.width"
          [style.height.px]="config.isMaximized ? null : config.size.height"
@@ -45,6 +46,11 @@ import { WindowManagerService } from '../../../services/window-manager.service';
       <div class="window-content" [style.display]="config.isMinimized ? 'none' : 'block'">
         <ng-container *ngComponentOutlet="config.component; inputs: config.inputs"></ng-container>
       </div>
+
+      <!-- Resize Handle -->
+      @if (!config.isMaximized) {
+        <div class="resize-handle" (mousedown)="startResize($event)"></div>
+      }
     </div>
   `,
   styles: [`
@@ -151,10 +157,38 @@ import { WindowManagerService } from '../../../services/window-manager.service';
       background: #1e1e1e;
       position: relative;
     }
+
+    .resize-handle {
+      position: absolute;
+      bottom: 0px;
+      right: 0px;
+      width: 15px;
+      height: 15px;
+      cursor: nwse-resize;
+      background: transparent;
+      z-index: 100;
+      
+      /* Optional visual indicator */
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        width: 6px;
+        height: 6px;
+        border-right: 2px solid rgba(255, 255, 255, 0.4);
+        border-bottom: 2px solid rgba(255, 255, 255, 0.4);
+      }
+    }
   `]
 })
 export class WindowFrameComponent {
   @Input({ required: true }) config!: WindowConfig;
+
+  // Resize State
+  private isResizing = false;
+  private resizeStartSize = { width: 0, height: 0 };
+  private resizeStartPos = { x: 0, y: 0 };
 
   constructor(private windowManager: WindowManagerService) { }
 
@@ -175,5 +209,59 @@ export class WindowFrameComponent {
   close(event: Event) {
     event.stopPropagation();
     this.windowManager.closeWindow(this.config.id);
+  }
+
+  onDragEnd(event: any) {
+    // Current position after drag
+    const element = event.source.getRootElement();
+    const transform = element.style.transform;
+    const regex = /translate3d\(([-0-9.]+)px,\s*([-0-9.]+)px,\s*([-0-9.]+)px\)/;
+    const match = transform.match(regex);
+
+    // We need to calculate absolute position from free drag
+    // CDK Drag stores position in internal state, but visually applied via transform
+    // Safer to get bounding rect relative to parent?
+    // Actually cdkDragFreeDragPosition Input binds it. 
+    // Wait, if we use cdkDragFreeDragPosition, we should update that value on drag end.
+
+    const { x, y } = event.source.getFreeDragPosition();
+    this.windowManager.updateWindowPosition(this.config.id, x, y);
+  }
+
+  // --- Resize Logic ---
+  startResize(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.isResizing = true;
+    this.resizeStartSize = { width: this.config.size.width, height: this.config.size.height };
+    this.resizeStartPos = { x: event.clientX, y: event.clientY };
+
+    // Add global listeners
+    window.addEventListener('mousemove', this.onResize);
+    window.addEventListener('mouseup', this.stopResize);
+  }
+
+  onResize = (event: MouseEvent) => {
+    if (!this.isResizing) return;
+
+    const dx = event.clientX - this.resizeStartPos.x;
+    const dy = event.clientY - this.resizeStartPos.y;
+
+    const newWidth = Math.max(300, this.resizeStartSize.width + dx);
+    const newHeight = Math.max(200, this.resizeStartSize.height + dy);
+
+    // Update style directly for performance? 
+    // Or update signal via service (might be choppy if angular change detection logic runs every pixel)
+    // Let's use service update for now for correct state. 
+    // If slow, we handle locally via DOM ref then update on stop.
+    // For now, simple service update.
+    this.windowManager.updateWindowSize(this.config.id, newWidth, newHeight);
+  }
+
+  stopResize = () => {
+    this.isResizing = false;
+    window.removeEventListener('mousemove', this.onResize);
+    window.removeEventListener('mouseup', this.stopResize);
   }
 }

@@ -85,6 +85,18 @@ export class WindowManagerService {
         );
     }
 
+    updateWindowPosition(id: string, x: number, y: number) {
+        this.windows.update(current =>
+            current.map(w => w.id === id ? { ...w, position: { x, y } } : w)
+        );
+    }
+
+    updateWindowSize(id: string, width: number, height: number) {
+        this.windows.update(current =>
+            current.map(w => w.id === id ? { ...w, size: { width, height } } : w)
+        );
+    }
+
     private getNextZIndex(): number {
         this.baseZIndex++;
         return this.baseZIndex;

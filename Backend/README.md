@@ -41,7 +41,7 @@ A file explorer application built with Angular and FastAPI.
 
 ### Frontend
 
-1. Navigate to project root.
+1. Navigate to `Frontend`.
 2. Install dependencies:
    ```bash
    npm install
@@ -51,3 +51,30 @@ A file explorer application built with Angular and FastAPI.
    ng build
    ```
 4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000).
+
+## 🔌 API Documentation
+
+### File System
+- **GET** `/api/filesystem/getfolderstructure`: Returns folder structure of target directory.
+- **POST** `/api/filesystem/createfolder`: Creates a new folder in target directory.
+- **POST** `/api/filesystem/deletefolder`: Deletes a folder in target directory.
+- **POST** `/api/filesystem/createfile`: Creates a new file in target directory.
+- **POST** `/api/filesystem/deletefile`: Deletes a file in target directory.
+- **POST** `/api/filesystem/renamefile`: Renames a file in target directory.
+- **POST** `/api/filesystem/renamefolder`: Renames a folder in target directory.
+
+### Terminal
+- **GET** `/api/terminal/init`: Returns default directory and OS type (e.g., 'windows').
+- **POST** `/api/terminal/cd`: Changes directory (stateless resolution) and returns new path.
+- **POST** `/api/terminal/execute_command`: Executes shell command in target CWD. Supports OS-agnostic calls via frontend translation.
+
+### Process Manager
+- **GET** `/api/processes/list`: Returns list of running system processes including PID, Name, User, CPU%, and Memory.
+
+## 🛠️ Tech Stack
+- **FastAPI**: High performance core.
+- **Uvicorn**: ASGI Server.
+- **Psutil**: System monitoring.
+- **Python-dotenv**: Configuration management.
+- **Pydantic**: Data validation and settings management.
+- **CORSMiddleware**: Cross-Origin Resource Sharing support for Frontend communication.

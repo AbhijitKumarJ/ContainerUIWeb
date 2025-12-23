@@ -10,14 +10,14 @@ A web-based desktop environment for managing Docker containers. This project sim
 | **Desktop Environment** | ✅ Done | Ubuntu-style wallpaper (Mesh Gradient), draggable icons. |
 | **Taskbar** | ✅ Done | Bottom bar with "Show Applications" grid, window tabs, clock. |
 | **Start Menu** | ✅ Done | Full-screen App Grid overlay with search bar. |
-| **Window Manager** | ✅ Done | Draggable, minimize/restore, focus management, dynamic sizing. |
+| **Window Manager** | ✅ Done | Draggable, resizable, minimize/restore, focus management, dynamic sizing. |
 
 ### Applications
 | App | Status | Description |
 | :--- | :---: | :--- |
 | **File Explorer** | 🚧 Partial | UI implemented with mock file system. Actual IO pending. |
-| **Terminal** | 🚧 Partial | Functional UI & basic commands (`ls`, `pwd`). Backend shell pending. |
-| **Task Manager** | 🚧 Partial | UI implemented with mock process data. |
+| **Terminal** | ✅ Done | Real backend execution, directory navigation, and OS-specific command translation. |
+| **Task Manager** | ✅ Done | Real-time system process monitoring using live backend data. |
 | **Text Editor** | ✅ Done | Fully functional text editor styling with mock save. |
 | **Browser** | ✅ Done | Iframe-based internal browser with address bar. |
 | **Calculator** | ✅ Done | Fully functional standard calculator. |

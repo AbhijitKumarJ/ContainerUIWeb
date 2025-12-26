@@ -5,4 +5,5 @@ jinja2
 python-multipart
 dotenv
 psutil
+pywinpty; sys_platform == 'win32'
 

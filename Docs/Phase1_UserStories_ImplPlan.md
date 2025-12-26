@@ -47,36 +47,43 @@ This document details the features required to complete Phase 1 of the Container
 
 ## Feature 3: File Explorer App
 **User Story:**
-> As a user, I want to browse a mock file system structure.
+> As a user, I want to browse the **real backend file system** to manage my files.
 
 ### Implementation Plan
-1.  **Mock Data Service (`FileSystemService`):**
-    -   **Data:** JSON tree.
+1.  **Backend Integration (`FileSystemService`):**
+    -   **API:** Connect to `GET /api/files/list` (Backend).
+    -   **Operations:** Implement copy, cut, paste, delete via API.
 2.  **File Explorer Component:**
     -   **Layout:** Split pane (Tree/Grid).
     -   **Navigation:** Breadcrumbs.
+    -   **Context Menu:** Right-click options on files.
 
 ---
 
 ## Feature 4: Terminal App
 **User Story:**
-> As a user, I want to open a terminal window and type basic commands.
+> As a user, I want to open a terminal window and execute **actual shell commands** in the system.
 
 ### Implementation Plan
-1.  **Terminal Component:**
+1.  **Backend Integration:**
+    -   **API:** `POST /api/terminal/exec` for command execution.
+    -   **Session:** Maintain current working directory (CWD).
+2.  **Terminal Component:**
     -   **Style:** Black background, Green prompt.
-    -   **Commands:** `help`, `ls`, `pwd`, `date`, `clear`.
-    -   **Behavior:** Auto-scroll to bottom on new output.
+    -   **Behavior:** Send commands to backend, display stdout/stderr response.
 
 ---
 
 ## Feature 5: Process Manager App
 **User Story:**
-> As a user, I want to view a list of running simulated processes.
+> As a user, I want to view a list of **real running system processes** and resource usage.
 
 ### Implementation Plan
-1.  **Process Manager Component:**
-    -    **UI:** Bootstrap Table with mock process data.
+1.  **Backend Integration:**
+    -   **API:** `GET /api/system/processes` (using `psutil`).
+2.  **Process Manager Component:**
+    -   **UI:** Bootstrap Table with columns: PID, Name, CPU%, Memory%.
+    -   **Actions:** "Kill Process" button.
 
 ---
 
@@ -86,8 +93,7 @@ This document details the features required to complete Phase 1 of the Container
 
 ### Implementation Plan
 1.  **Text Editor (`TextEditorComponent`):**
-    -   Textarea with save button (mock).
-    -   Status bar (Line/Col count).
+    -   Connect Open/Save operations to File System API.
 2.  **Browser (`BrowserComponent`):**
     -   Iframe container with address bar (input).
     -   Navigation buttons (Home, Refresh).
@@ -99,9 +105,40 @@ This document details the features required to complete Phase 1 of the Container
 
 ## Feature 7: Settings & Theme
 **User Story:**
-> As a user, I want the desktop to look consistent and polished.
+> As a user, I want the desktop to look consistent and polished, and be able to customize it.
 
 ### Implementation Plan
 1.  **Theme:**
     -   Enforce Ubuntu color palette globally.
-    -   Use consistent scrollbar styling.
+2.  **Settings App:**
+    -   Ability to change Desktop Background (Color or Image).
+    -   Persist settings to `localStorage` (or backend in Phase 2).
+
+---
+
+## Feature 8: Extension System
+**User Story:**
+> As a user, I want to install and run third-party extensions (plugins) to extend functionality without recompiling the OS.
+
+### Implementation Plan
+1.  **Backend:**
+    -   `extensions.py`: Handle `/install` (ZIP upload) and `/extensions` (Static Serve).
+2.  **Frontend (`ExtensionLoaderComponent`):**
+    -   **Isolation:** Load extension `index.html` in an `<iframe>`.
+    -   **Communication:** Listen for `postMessage` (e.g., `READ_FILE`) and proxy requests to the OS services.
+
+---
+
+## Feature 9: Extended Functionality (Phase 1 Roadmap)
+**User Story:**
+> As a user, I want advanced developer tools to make this a viable workspace.
+
+### Implementation Plan
+Integration of the following planned extensions:
+1.  **Advanced Text Editor:** Monaco Editor integration.
+2.  **Advanced Image Manager:** View and edit images.
+3.  **Log Streamer:** Real-time log monitoring.
+4.  **Network Request Tester:** HTTP Client tool.
+5.  **Markdown Viewer:** Live preview editor.
+6.  **JSON Viewer:** Tree visualizer.
+7.  **SQLite Viewer:** Database browser.

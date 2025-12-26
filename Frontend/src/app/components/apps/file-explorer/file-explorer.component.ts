@@ -55,61 +55,66 @@ import { TextEditorComponent } from '../text-editor/text-editor.component';
             }
             </div>
 
-            @if (selectedFile(); as file) {
             <div class="properties-panel">
-                <div class="prop-header">
-                    <i class="fa-solid" [ngClass]="file.type === 'folder' ? 'fa-folder icon-folder' : 'fa-file icon-file'"></i>
-                    <span class="prop-title">{{ file.name }}</span>
-                </div>
-                
-                <div class="prop-details">
-                    @if (selectedFileProperties(); as props) {
-                        <div class="prop-row">
-                            <span class="label">Type:</span>
-                            <span class="value">{{ props.type }}</span>
-                        </div>
-                         <div class="prop-row">
-                            <span class="label">Size:</span>
-                            <span class="value">{{ props.size }} bytes</span>
-                        </div>
-                        <div class="prop-row">
-                            <span class="label">Modified:</span>
-                            <span class="value">{{ props.modified | date:'medium' }}</span>
-                        </div>
-                        <div class="prop-row">
-                            <span class="label">Location:</span>
-                            <span class="value">{{ props.parent }}</span>
-                        </div>
-                        
-                        <div class="actions">
-                            <span class="action-label">Actions:</span>
-                            <div class="action-buttons">
-                                <button class="btn-action" (click)="onCopy()" title="Copy">
-                                    <i class="fa-solid fa-copy"></i>
-                                </button>
-                                <button class="btn-action" (click)="onCut()" title="Cut">
-                                    <i class="fa-solid fa-scissors"></i>
-                                </button>
-                                <button class="btn-action delete" (click)="onDelete()" title="Delete">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
+                @if (selectedFile(); as file) {
+                    <div class="prop-header">
+                        <i class="fa-solid" [ngClass]="file.type === 'folder' ? 'fa-folder icon-folder' : 'fa-file icon-file'"></i>
+                        <span class="prop-title">{{ file.name }}</span>
+                    </div>
+                    
+                    <div class="prop-details">
+                        @if (selectedFileProperties(); as props) {
+                            <div class="prop-row">
+                                <span class="label">Type:</span>
+                                <span class="value">{{ props.type }}</span>
                             </div>
-                        </div>
+                            <div class="prop-row">
+                                <span class="label">Size:</span>
+                                <span class="value">{{ props.size }} bytes</span>
+                            </div>
+                            <div class="prop-row">
+                                <span class="label">Modified:</span>
+                                <span class="value">{{ props.modified | date:'medium' }}</span>
+                            </div>
+                            <div class="prop-row">
+                                <span class="label">Location:</span>
+                                <span class="value">{{ props.parent }}</span>
+                            </div>
+                            
+                            <div class="actions">
+                                <span class="action-label">Actions:</span>
+                                <div class="action-buttons">
+                                    <button class="btn-action" (click)="onCopy()" title="Copy">
+                                        <i class="fa-solid fa-copy"></i>
+                                    </button>
+                                    <button class="btn-action" (click)="onCut()" title="Cut">
+                                        <i class="fa-solid fa-scissors"></i>
+                                    </button>
+                                    <button class="btn-action delete" (click)="onDelete()" title="Delete">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
 
-                        @if (file.type === 'file') {
-                            <div class="actions mt-2">
-                                <span class="action-label">Open with:</span>
-                                <button class="btn-open" (click)="openWith('Text Editor')">
-                                    <i class="fa-solid fa-pen-to-square"></i> Text Editor
-                                </button>
-                            </div>
+                            @if (file.type === 'file') {
+                                <div class="actions mt-2">
+                                    <span class="action-label">Open with:</span>
+                                    <button class="btn-open" (click)="openWith('Text Editor')">
+                                        <i class="fa-solid fa-pen-to-square"></i> Text Editor
+                                    </button>
+                                </div>
+                            }
+                        } @else {
+                            <div class="loading-props">Loading properties...</div>
                         }
-                    } @else {
-                        <div class="loading-props">Loading properties...</div>
-                    }
-                </div>
+                    </div>
+                } @else {
+                    <div class="empty-props">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <p>Select an item to view properties</p>
+                    </div>
+                }
             </div>
-            }
         </div>
       </div>
     </div>
@@ -323,6 +328,17 @@ import { TextEditorComponent } from '../text-editor/text-editor.component';
         margin-top: 20px;
         width: 100%;
         text-align: center;
+    }
+
+    .empty-props {
+        color: #888;
+        text-align: center;
+        margin-top: 50%;
+        transform: translateY(-50%);
+        padding: 20px;
+        
+        i { font-size: 2rem; margin-bottom: 10px; opacity: 0.5; }
+        p { margin: 0; font-size: 0.9rem; }
     }
   `]
 })

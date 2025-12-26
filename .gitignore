@@ -1,3 +1,6 @@
 #python git ignore
 __pycache__
 .vscode
+Backend/extensions_storage/
+*.js.map
+*.css.map

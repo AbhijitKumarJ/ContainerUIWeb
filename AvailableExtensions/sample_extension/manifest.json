@@ -1,0 +1,11 @@
+{
+    "id": "com.test.sample",
+    "name": "Sample Extension",
+    "version": "1.0.0",
+    "entryPoint": "index.html",
+    "icon": "fa-solid fa-flask",
+    "defaultSize": {
+        "width": 600,
+        "height": 400
+    }
+}

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Text Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div id="app">
+        <header>
+            <span id="current-file"
+                style="flex: 1; padding: 0 10px; color: #aaa; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;">No
+                file opened</span>
+            <button id="btn-open"><i class="fa-solid fa-folder-open"></i> Open</button>
+            <button id="btn-save"><i class="fa-solid fa-save"></i> Save</button>
+            <div id="status">Ready</div>
+        </header>
+        <div id="editor-container"></div>
+    </div>
+
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

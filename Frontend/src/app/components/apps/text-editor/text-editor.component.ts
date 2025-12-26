@@ -2,6 +2,7 @@ import { Component, Input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FileSystemService } from '../../../services/file-system.service';
+import { WindowManagerService } from '../../../services/window-manager.service';
 import { inject } from '@angular/core';
 
 @Component({
@@ -11,7 +12,9 @@ import { inject } from '@angular/core';
   template: `
     <div class="editor-container">
       <div class="toolbar">
+        <button class="tool-btn" (click)="open()"><i class="fa-solid fa-folder-open"></i> Open</button>
         <button class="tool-btn" (click)="save()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        <button class="tool-btn" (click)="saveAs()"><i class="fa-solid fa-file-export"></i> Save As</button>
         <span class="filename">{{ fileName() }}</span>
       </div>
       <textarea [(ngModel)]="content" spellcheck="false"></textarea>
@@ -85,28 +88,34 @@ import { inject } from '@angular/core';
 export class TextEditorComponent {
   @Input() initialContent = '';
   @Input() initialFileName = 'Untitled.txt';
-  @Input() currentPath: string[] = [];
+  @Input() currentPath: string[] | null = null; // Can be null if new file
 
   private fs = inject(FileSystemService);
+  private wm = inject(WindowManagerService);
 
   content = '';
   fileName = signal('Untitled.txt');
+  activePath = signal<string[] | null>(null);
 
   ngOnInit() {
     this.fileName.set(this.initialFileName);
+    this.activePath.set(this.currentPath);
 
     // If content is provided explicitly, use it.
     if (this.initialContent) {
       this.content = this.initialContent;
     }
     // Otherwise, if we have a path/filename context, try to read from FS
-    else if (this.currentPath && this.initialFileName && this.initialFileName !== 'Untitled.txt') {
+    else if (this.activePath() && this.initialFileName && this.initialFileName !== 'Untitled.txt') {
       this.loadFile();
     }
   }
 
   loadFile() {
-    this.fs.readFile(this.currentPath, this.initialFileName).subscribe({
+    const path = this.activePath();
+    if (!path) return;
+
+    this.fs.readFile(path, this.fileName()).subscribe({
       next: (res: { content: string }) => {
         this.content = res.content;
       },
@@ -117,9 +126,22 @@ export class TextEditorComponent {
     });
   }
 
+  async open() {
+    const result = await this.wm.openFileDialog({
+      mode: 'open',
+      initialPath: this.activePath() || []
+    });
+
+    if (result) {
+      this.activePath.set(result.path);
+      this.fileName.set(result.fileName);
+      this.loadFile();
+    }
+  }
+
   save() {
-    if (this.currentPath && this.fileName() !== 'Untitled.txt') {
-      this.fs.writeFile(this.currentPath, this.fileName(), this.content).subscribe({
+    if (this.activePath() && this.fileName() !== 'Untitled.txt') {
+      this.fs.writeFile(this.activePath()!, this.fileName(), this.content).subscribe({
         next: () => {
           console.log('File saved successfully');
           alert(`File "${this.fileName()}" saved!`);
@@ -130,9 +152,30 @@ export class TextEditorComponent {
         }
       });
     } else {
-      console.log('Saving new file not implemented yet (needs Save As dialog)', this.fileName());
-      // For now just alert mock
-      alert(`File "${this.fileName()}" saved (simulation)!`);
+      this.saveAs();
+    }
+  }
+
+  async saveAs() {
+    const result = await this.wm.openFileDialog({
+      mode: 'save',
+      initialPath: this.activePath() || [],
+      defaultFileName: this.fileName()
+    });
+
+    if (result) {
+      // Write the file
+      this.fs.writeFile(result.path, result.fileName, this.content).subscribe({
+        next: () => {
+          this.activePath.set(result.path);
+          this.fileName.set(result.fileName);
+          alert(`File saved to ${result.fileName}`);
+        },
+        error: (err) => {
+          console.error('Failed to save file', err);
+          alert('Error saving file');
+        }
+      });
     }
   }
 

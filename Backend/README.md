@@ -1,6 +1,15 @@
 # ContainerUIWeb
 
-A file explorer application built with Angular and FastAPI.
+A web-based desktop environment for system and container management, built with FastAPI and Angular.
+
+## ✨ Features
+- **Web Desktop Interface**: Windows-like desktop environment with Taskbar, Start Menu, and Window Management.
+- **File Explorer**: Browse files, view properties (always open pane), and manage file operations.
+- **Text Editor**: Edit files with Open, Save, and Save As capabilities using native-like file dialogs.
+- **Settings**: Customize desktop background with solid colors or images (persisted locally).
+- **Terminal**: Full interactive terminal support using WebSockets and PTY (Pseudo-Terminal), enabling commands like `vim`, `htop`, etc.
+- **Process Manager**: View running system processes.
+- **Extension System**: Install and run third-party extensions in sandboxed IFrames.
 
 ## Prerequisites
 
@@ -50,7 +59,7 @@ A file explorer application built with Angular and FastAPI.
    ```bash
    ng build
    ```
-4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000).
+4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000). The backend is configured to serve `index.html` from `app/static/browser` at the root URL. If the static files are not present, a fallback message will be displayed.
 
 ## 🔌 API Documentation
 
@@ -64,17 +73,23 @@ A file explorer application built with Angular and FastAPI.
 - **POST** `/api/filesystem/renamefolder`: Renames a folder in target directory.
 
 ### Terminal
-- **GET** `/api/terminal/init`: Returns default directory and OS type (e.g., 'windows').
+- **WS** `/api/terminal/ws`: WebSocket endpoint for bidirectional terminal communication (PTY).
+- **GET** `/api/terminal/init`: Returns default directory and OS type.
 - **POST** `/api/terminal/cd`: Changes directory (stateless resolution) and returns new path.
 - **POST** `/api/terminal/execute_command`: Executes shell command in target CWD. Supports OS-agnostic calls via frontend translation.
 
 ### Process Manager
 - **GET** `/api/processes/list`: Returns list of running system processes including PID, Name, User, CPU%, and Memory.
 
+### Extensions
+- **POST** `/api/extensions/install`: Upload and install a `.zip` extension (must contain `manifest.json`).
+- **GET** `/api/extensions/list`: List all installed extensions.
+
 ## 🛠️ Tech Stack
 - **FastAPI**: High performance core.
 - **Uvicorn**: ASGI Server.
 - **Psutil**: System monitoring.
 - **Python-dotenv**: Configuration management.
+- **PyWinPTY**: Windows Console PTY pseudo-terminal support.
 - **Pydantic**: Data validation and settings management.
 - **CORSMiddleware**: Cross-Origin Resource Sharing support for Frontend communication.

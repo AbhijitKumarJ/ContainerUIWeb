@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { map, tap, switchMap } from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
 import { FileNode } from '../models/file-node.interface';
 
@@ -39,6 +39,11 @@ export class FileSystemService {
         return this.rootDirectory + separator + path.join('\\');
     }
 
+    private ensureRoot(): Observable<void> {
+        if (this.rootDirectory) return of(void 0);
+        return this._getFilesFromBackend([]).pipe(map(() => void 0));
+    }
+
     private _getFilesFromBackend(path: string[]): Observable<FileNode[]> {
         let queryPath = "";
 
@@ -66,83 +71,60 @@ export class FileSystemService {
     }
 
     getFileProperties(path: string[], fileName: string, type: 'file' | 'folder'): Observable<any> {
-        let fullPath = "";
-        if (this.rootDirectory) {
-            // If we are at root (path empty), just append filename
-            if (path.length === 0) {
-                const separator = this.rootDirectory.endsWith('\\') ? '' : '\\';
-                fullPath = this.rootDirectory + separator + fileName;
-            } else {
-                fullPath = this.getFullPath([...path, fileName]);
-            }
-        }
-
-        return this.http.get<any>(`${this.apiUrl}/api/filesystem/getfileproperties`, {
-            params: { path: fullPath, type: type }
-        });
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath([...path, fileName]);
+                return this.http.get<any>(`${this.apiUrl}/api/filesystem/getfileproperties`, {
+                    params: { path: fullPath, type: type }
+                });
+            })
+        );
     }
 
     readFile(path: string[], fileName: string): Observable<{ content: string }> {
-        let fullPath = "";
-        if (this.rootDirectory) {
-            if (path.length === 0) {
-                const separator = this.rootDirectory.endsWith('\\') ? '' : '\\';
-                fullPath = this.rootDirectory + separator + fileName;
-            } else {
-                fullPath = this.getFullPath([...path, fileName]);
-            }
-        }
-
-        return this.http.get<{ content: string }>(`${this.apiUrl}/api/filesystem/readfile`, {
-            params: { path: fullPath }
-        });
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath([...path, fileName]);
+                return this.http.get<{ content: string }>(`${this.apiUrl}/api/filesystem/readfile`, {
+                    params: { path: fullPath }
+                });
+            })
+        );
     }
 
     writeFile(path: string[], fileName: string, content: string): Observable<any> {
-        let fullPath = "";
-        if (this.rootDirectory) {
-            if (path.length === 0) {
-                const separator = this.rootDirectory.endsWith('\\') ? '' : '\\';
-                fullPath = this.rootDirectory + separator + fileName;
-            } else {
-                fullPath = this.getFullPath([...path, fileName]);
-            }
-        }
-
-        // If we don't have a rootDirectory yet (unlikely if triggered from UI), we can't construct path.
-        // But for new files or save as, we should be careful. 
-        // Assuming we are saving existing files or files in known paths.
-
-        return this.http.post<any>(`${this.apiUrl}/api/filesystem/writefile`, {
-            path: fullPath,
-            content: content
-        });
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath([...path, fileName]);
+                return this.http.post<any>(`${this.apiUrl}/api/filesystem/writefile`, {
+                    path: fullPath,
+                    content: content
+                });
+            })
+        );
     }
 
     createItem(path: string[], name: string, type: 'file' | 'folder'): Observable<any> {
-        let fullPath = "";
-        if (this.rootDirectory) {
-            fullPath = this.getFullPath([...path, name]);
-        }
-        return this.http.post<any>(`${this.apiUrl}/api/filesystem/create`, {
-            path: fullPath,
-            type: type
-        });
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath([...path, name]);
+                return this.http.post<any>(`${this.apiUrl}/api/filesystem/create`, {
+                    path: fullPath,
+                    type: type
+                });
+            })
+        );
     }
 
     deleteItem(path: string[], fileName: string): Observable<any> {
-        let fullPath = "";
-        if (this.rootDirectory) {
-            const separator = this.rootDirectory.endsWith('\\') ? '' : '\\';
-            if (path.length === 0) {
-                fullPath = this.rootDirectory + separator + fileName;
-            } else {
-                fullPath = this.getFullPath([...path, fileName]);
-            }
-        }
-        return this.http.delete<any>(`${this.apiUrl}/api/filesystem/delete`, {
-            params: { path: fullPath }
-        });
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath([...path, fileName]);
+                return this.http.delete<any>(`${this.apiUrl}/api/filesystem/delete`, {
+                    params: { path: fullPath }
+                });
+            })
+        );
     }
 
     copyItem(sourcePath: string, destPath: string): Observable<any> {

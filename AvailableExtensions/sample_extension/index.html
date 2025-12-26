@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample Extension</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .box { border: 1px solid #ccc; padding: 10px; margin-top: 10px; background: #f9f9f9; }
+        button { padding: 8px 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        pre { background: #eee; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Sample Extension</h1>
+    <p>This extension runs in an iframe.</p>
+    
+    <div class="box">
+        <h3>File System Test</h3>
+        <!-- Asking for README.md because it usually exists in repo root or /etc/hostname for linux -->
+        <button id="readBtn">Read Sample file:</button>
+        <div id="output"></div>
+    </div>
+
+    <script>
+        const OS = {
+            readFile: (path, filename) => {
+                return new Promise((resolve) => {
+                    const requestId = Math.random().toString(36);
+                    
+                    const listener = (event) => {
+                        // Check if message is from parent and has matching request ID
+                        if (event.data.requestId === requestId || event.data.reqId === requestId) {
+                            window.removeEventListener('message', listener);
+                            resolve(event.data.result || event.data);
+                        }
+                    };
+                    window.addEventListener('message', listener);
+
+                    window.parent.postMessage({
+                        target: 'OS_HOST',
+                        action: 'READ_FILE',
+                        requestId: requestId,
+                        payload: {
+                            path: path,
+                            filename: filename 
+                        }
+                    }, '*');
+                });
+            }
+        };
+
+        document.getElementById('readBtn').onclick = async () => {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Reading...';
+            
+            try {
+
+                //const data = await OS.readFile([], 'README.MD');
+                // Reading from etc directory hostname exists there
+                const data = await OS.readFile(['etc'], 'hostname');
+                
+                if (data.error) {
+                    output.innerHTML = `<p style="color:red">Error: ${data.error}</p>`;
+                } else {
+                    const content = data.content || "No content returned";
+                    output.innerHTML = `<pre>${content.substring(0, 200)}...</pre>`;
+                }
+            } catch (e) {
+                output.innerHTML = `<p style="color:red">Exception: ${e.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>

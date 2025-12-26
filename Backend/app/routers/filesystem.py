@@ -3,21 +3,29 @@ import os
 from datetime import datetime
 from ..models.file_node import FileNode
 from dotenv import load_dotenv
-
+import platform
 #load_dotenv() for default directory path based on os
 load_dotenv()
 
 router = APIRouter()
 
+def handlepathquirks(path:str):
+    
+    if platform.system() != 'Windows':
+        # On non-Windows systems, replace double backslashes with single ones
+        path = path.replace('\\', '/').replace('//','/')
+    return path
+
+
 @router.get("/getfolderstructure")
 async def getfolderstructure(directory: str = ""):
+    print('Backend called getfolderstructure: directory = ' + directory)
     if directory == "":
         directory = os.getenv("DEFAULT_DIRECTORY")
     # Handle double backslashes for non-Windows systems
-    import platform
-    if platform.system() != 'Windows':
-        # On non-Windows systems, replace double backslashes with single ones
-        directory = directory.replace('\\', '/').replace('//','/')
+
+    directory = handlepathquirks(directory)
+    print(directory)
     
     # Then normalize the path
     #directory = os.path.normpath(directory)
@@ -48,6 +56,12 @@ async def getfolderstructure(directory: str = ""):
 @router.get("/getfileproperties")
 async def getfileproperties(path: str, type: str = "file"):
     try:
+        print('Backend called getfileproperties: path = ' + path)
+        print('Backend called getfileproperties: type = ' + type)
+                
+        path = handlepathquirks(path)
+        print(path)
+
         if not os.path.exists(path):
             return {"error": "Path does not exist"}
         
@@ -83,6 +97,11 @@ async def getfileproperties(path: str, type: str = "file"):
 @router.get("/readfile")
 async def readfile(path: str):
     try:
+        print('Backend called readfile: path = ' + path)
+
+        path = handlepathquirks(path)
+        print(path)
+
         if not os.path.exists(path):
             return {"error": "File does not exist"}
         
@@ -108,6 +127,11 @@ class WriteFileRequest(BaseModel):
 @router.post("/writefile")
 async def writefile(request: WriteFileRequest):
     try:
+        print('Backend called writefile: request.path = ' + request.path)
+
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
         # Check if directory exists
         directory = os.path.dirname(request.path)
         if not os.path.exists(directory):
@@ -134,6 +158,11 @@ class CopyMoveRequest(BaseModel):
 @router.post("/create")
 async def create_item(request: CreateItemRequest):
     try:
+        print('Backend called create_item: request.path = ' + request.path)
+
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
         if os.path.exists(request.path):
              return {"error": "Item already exists"}
 
@@ -150,6 +179,11 @@ async def create_item(request: CreateItemRequest):
 @router.delete("/delete")
 async def delete_item(path: str):
     try:
+        print('Backend called delete_item: path = ' + path)
+
+        path = handlepathquirks(path)
+        print(path)
+
         if not os.path.exists(path):
             return {"error": "Path does not exist"}
         
@@ -165,6 +199,11 @@ async def delete_item(path: str):
 @router.post("/copy")
 async def copy_item(request: CopyMoveRequest):
     try:
+        print('Backend called copy_item: request.path = ' + request.path)
+        
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
         if not os.path.exists(request.source):
              return {"error": "Source does not exist"}
         
@@ -183,6 +222,17 @@ async def copy_item(request: CopyMoveRequest):
 @router.post("/move")
 async def move_item(request: CopyMoveRequest):
     try:
+        print('Backend called move_item: request.source = ' + request.source)
+        print('Backend called move_item: request.destination = ' + request.destination)
+
+        
+        request.source = handlepathquirks(request.source)
+        print(request.source)
+
+        
+        request.destination = handlepathquirks(request.destination)
+        print(request.destination)
+
         if not os.path.exists(request.source):
              return {"error": "Source does not exist"}
              

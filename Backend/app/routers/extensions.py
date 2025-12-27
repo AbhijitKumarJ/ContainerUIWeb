@@ -27,11 +27,21 @@ async def install_extension(file: UploadFile = File(...)):
     try:
         # 2. Inspect Zip for manifest.json
         with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-            if "manifest.json" not in zip_ref.namelist():
+            file_list = zip_ref.namelist()
+            print(f"Files in ZIP: {file_list}")
+            
+            # Find manifest.json file (could be in a subfolder)
+            manifest_path = None
+            for name in file_list:
+                if "manifest.json" in name:
+                    manifest_path = name
+                    break
+                    
+            if manifest_path is None:
                 raise HTTPException(status_code=400, detail="Missing manifest.json")
             
             # Read Manifest to get ID
-            with zip_ref.open("manifest.json") as m:
+            with zip_ref.open(manifest_path) as m:
                 try:
                     manifest = json.load(m)
                     ext_id = manifest.get("id")
@@ -60,20 +70,46 @@ async def install_extension(file: UploadFile = File(...)):
 @router.get("/list")
 async def list_extensions():
     extensions = []
+    print('Extension directory: ' + EXT_DIR._str)
     # Scan folders
     if not EXT_DIR.exists():
+        print(' not exist')
         return []
         
     for item in EXT_DIR.iterdir():
-        if item.is_dir() and (item / "manifest.json").exists():
-            try:
-                with open(item / "manifest.json", "r") as f:
-                    data = json.load(f)
-                    # Add execution URL
-                    # Ensure entryPoint exists
-                    entry_point = data.get('entryPoint', 'index.html')
-                    data['url'] = f"/extensions/{item.name}/{entry_point}"
-                    extensions.append(data)
-            except:
-                pass
+        print(item)
+        print(item.is_dir())
+        if item.is_dir():
+            print(f"Contents of {item.name}:")
+            for subitem in item.rglob('*'):
+                if subitem.is_file():
+                    print(f"  File: {subitem.relative_to(item)}")
+            
+            # Find manifest.json file recursively within the extension directory
+            manifest_files = list(item.rglob('manifest.json'))
+            if manifest_files:
+                manifest_path = manifest_files[0]  # Use the first manifest.json found
+                try:
+                    print(f"       Found manifest at: {manifest_path}")
+                    with open(manifest_path, "r") as f:
+                        data = json.load(f)
+                        # Add execution URL
+                        # Ensure entryPoint exists
+                        entry_point = data.get('entryPoint', 'index.html')
+                        
+                        # Find the corresponding entry point file
+                        entry_files = list(item.rglob(entry_point))
+                        if entry_files:
+                            entry_file_path = entry_files[0]
+                            relative_path = entry_file_path.relative_to(item)
+                            data['url'] = f"/extensions/{item.name}/{relative_path}"
+                        else:
+                            # Fallback to the original logic
+                            data['url'] = f"/extensions/{item.name}/{entry_point}"
+                        
+                        extensions.append(data)
+                except Exception as e:
+                    print(f"Error processing extension {item.name}: {str(e)}")
+            else:
+                print(f"       No manifest.json found in {item.name}")
     return extensions

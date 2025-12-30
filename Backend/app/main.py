@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse
 import os
-from .routers import filesystem, terminal, processes, extensions
+from .routers import filesystem, terminal, processes, extensions, wallpapers, services, file_transfer, backup
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
@@ -22,6 +22,15 @@ app.include_router(filesystem.router,prefix="/api/filesystem")
 app.include_router(terminal.router,prefix="/api/terminal")
 app.include_router(processes.router,prefix="/api/processes")
 app.include_router(extensions.router, prefix="/api/extensions")
+app.include_router(wallpapers.router, prefix="/api/wallpapers")
+app.include_router(services.router, prefix="/api/services")
+app.include_router(file_transfer.router, prefix="/api/file-transfer")
+app.include_router(backup.router, prefix="/api/backup")
+
+# Mount wallpapers directory
+wallpapers_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "wallpapers")
+if os.path.exists(wallpapers_dir):
+    app.mount("/wallpapers", StaticFiles(directory=wallpapers_dir), name="wallpapers")
 
 # Mount extensions directory
 extensions.mount_extensions(app)

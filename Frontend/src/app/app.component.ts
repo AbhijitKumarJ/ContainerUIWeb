@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { ExtensionService } from './services/extension.service';
+import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 @Component({
@@ -7,4 +8,10 @@ import { RouterOutlet } from '@angular/router';
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
-export class AppComponent {}
+export class AppComponent {
+  extService = inject(ExtensionService);
+
+  constructor() {
+    this.extService.loadExtensions();
+  }
+}

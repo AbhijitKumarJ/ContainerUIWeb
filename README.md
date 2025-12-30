@@ -16,14 +16,26 @@ A web-based desktop environment for managing Docker containers. This project sim
 ### Applications
 | App | Status | Description |
 | :--- | :---: | :--- |
-| **File Explorer** | ✅ Done | Real file system browsing, properties pane, and file operations (copy/cut/paste/delete). |
+| **File Explorer** | ✅ Done | Real file system browsing, properties pane, file operations, and compression/decompression (.zip) support. |
 | **Terminal** | ✅ Done | Real backend execution, directory navigation, and OS-specific command translation. |
-| **Task Manager** | ✅ Done | Real-time system process monitoring using live backend data. |
+| **Process Manager** | ✅ Done | Real-time system process monitoring using live backend data with kill functionality. |
+| **Service Manager** | 🚀 In Progress | Real-time system service monitoring using live backend data with start/stop functionality. |
 | **Text Editor** | ✅ Done | Fully functional with Open/Save/Save As dialogs connected to backend. |
-| **Browser** | ✅ Done | Iframe-based internal browser with address bar. |
+| **Browser** | ✅ Done | Iframe-based internal browser with address bar, bookmarks support, and limitation warnings. |
 | **Calculator** | ✅ Done | Fully functional standard calculator. |
-| **Settings** | ✅ Done | Customize desktop background (color/image) with persistence. |
-| **Extensions** | ✅ Done | Manager app to install (`.zip`) and launch third-party extensions. |
+| **Settings-Personalization** | ✅ Done | Customize desktop background (color, uploaded images, or system files) with persistence. 
+| **Settings-Default Apps** | ✅ Done | Default Apps tab to set default apps for file types. It provides option to map file extensions to apps and set default app from mapped apps for each file extension. |
+| **Settings-Backup Restore User Data** | ✅ Done | Ability to export user data from the container to the host which includes settings, file type associations, wallpapers, extensions, bookmarks etc. Also, it provides option to import user data from the host to the container through similar zip file. |
+| **File Transfer** | ✅ Done | Ability to transfer files between the container and the host through a file transfer app which uploads to a fixed location(folder - filetransfers/upload) in the container and downloads files from a fixed location(folder - filetransfers/download) in the container.|
+| **Extensions** | ✅ Done | Manager app to install (`.zip`) extensions along with file type associations. Remove extension and file type associations. |
+
+### Available Extensions
+Check Available Extensions folder for available extensions.
+
+| Extension | Description |
+| :--- | :--- |
+| **Text Editor** | Monaco Editor based text editor to the system. |
+| **Sample Extension** | A sample extension to demonstrate the extension architecture. |
 
 ### System & Theme
 | Feature | Status | Description |
@@ -82,15 +94,10 @@ A web-based desktop environment for managing Docker containers. This project sim
 4. Access via the Backend URL default [http://localhost:8000](http://localhost:8000).
 
 ## 🔮 Future Roadmap 
-- [ ] **Process Control:** Ability to kill actual container processes from Task Manager.
-- [ ] **Improved Setting:** Ability to select image from container os through file picker. Also, uploaded image should be saved in the container at a specific location and should be shown in the settings as a preview of list of images available in that location.
 - [ ] **Theming:** Ability to select from standard list of themes and apply to the desktop via settings.
-- [x] **Advanced Terminal:** Ability to run commands in the container and get the output in the terminal with real live connection to the container terminal. Supports interactive commands like `python`, `nano`, etc. via WebSockets.
-- [ ] **Image Viewer:** Ability to view images in the container through file picker or when image file selected in file explorer(option to open with image viewer in properties panel).
-- [ ] **Extension Manager:** Ability to remove extension and file type associations.
-- [ ] **File Type Association:** Ability to associate file types with extensions and preexixting programs like text editor, terminal, image viewer etc. It shoulld be persistent.
+- [ ] **Log Engine:** Ability to log system events, app logs, and other events in the container through a common log engine.
+- [ ] **Logger:** Ability to view logs in the container through a logger app.
 - [ ] **Extensions:** Add more extensions to the system.
-   - [x] **Advanced Text Editor:** Monaco Editor based text editor to the system.
    - [ ] **Advanced Image Manager:** Add advanced image manager to the system.
    - [ ] **Log Streamer (Log Viewer):** A dedicated app to view `.log` files in real-time (like `tail -f`), with search, filter, and color-coding (highlight "ERROR" in red).
    - [ ] **Network Request Tester (Postman Lite):** An app to make HTTP requests (GET/POST) to other services.

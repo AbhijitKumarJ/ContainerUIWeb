@@ -1,4 +1,5 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, effect, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 
 export type BackgroundType = 'image' | 'color';
 
@@ -13,6 +14,9 @@ export class SettingsService {
     backgroundImage = signal<string | null>(localStorage.getItem('backgroundImage'));
     backgroundColor = signal<string>(localStorage.getItem('backgroundColor') || '#2c001e');
     backgroundType = signal<BackgroundType>((localStorage.getItem('backgroundType') as BackgroundType) || 'color');
+
+    private http = inject(HttpClient);
+    private apiUrl = 'http://localhost:8000/api/wallpapers';
 
     constructor() {
         // Persistence effects
@@ -34,6 +38,20 @@ export class SettingsService {
         });
     }
 
+    getWallpapers() {
+        return this.http.get<{ wallpapers: string[] }>(`${this.apiUrl}/list`);
+    }
+
+    uploadWallpaper(file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.http.post<{ filename: string, url: string }>(`${this.apiUrl}/upload`, formData);
+    }
+
+    addWallpaperFromPath(path: string) {
+        return this.http.post<{ success: boolean, url: string }>(`${this.apiUrl}/add`, { path });
+    }
+
     setBackgroundImage(url: string) {
         this.backgroundImage.set(url);
         this.backgroundType.set('image');
@@ -50,18 +68,21 @@ export class SettingsService {
 
     getBackgroundStyle() {
         if (this.backgroundType() === 'image' && this.backgroundImage()) {
+            // If the URL is relative (starts with /), prepend backend URL if needed? 
+            // Actually, if it's served via proxy or same origin, it's fine. 
+            // But here we are on localhost:4200 and backend on 8000.
+            // We need to resolve the full URL if it's from our backend.
+            let url = this.backgroundImage();
+            if (url?.startsWith('/wallpapers/')) {
+                url = `http://localhost:8000${url}`;
+            }
+
             return {
-                'background-image': `url(${this.backgroundImage()})`,
+                'background-image': `url(${url})`,
                 'background-size': 'cover',
                 'background-position': 'center'
             };
         } else if (this.backgroundType() === 'color') {
-            // If it's the default gradient color/setup, we might want to return that
-            // But here we are allowing simple solid colors. 
-            // If the user hasn't set anything special, we might default to the original CSS in the component,
-            // but let's make the service authoritative.
-            // If the user clears their settings, we might want a way to revert to default.
-            // For now, if color is set, use it.
             return {
                 'background': this.backgroundColor()
             };

@@ -14,6 +14,7 @@ import { WindowManagerService } from '../../../services/window-manager.service';
       <iframe 
         #extFrame 
         [src]="safeUrl" 
+        (load)="onFrameLoad()"
         frameborder="0" 
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
       </iframe>
@@ -27,6 +28,8 @@ import { WindowManagerService } from '../../../services/window-manager.service';
 export class ExtensionLoaderComponent implements OnInit, OnDestroy {
     @Input() url!: string;
     @Input() extId!: string;
+    @Input() initialFileName?: string;
+    @Input() currentPath?: string[];
 
     @ViewChild('extFrame') extFrame!: ElementRef<HTMLIFrameElement>;
 
@@ -36,22 +39,55 @@ export class ExtensionLoaderComponent implements OnInit, OnDestroy {
     wm = inject(WindowManagerService);
 
     private messageListener: any;
+    private frameLoaded = false;
 
     ngOnInit() {
-        // Determine the full URL. If it starts with http, use it, otherwise prepend backend url
-        // For now assuming the backend serves it on same host or we use a proxy, 
-        // but clearly in the plan we mounted it on valid backend port.
-        // However, the iframe needs a full URL or absolute path. 
-        // If the backend runs on 8000 and angular on 4200, we need full http://localhost:8000/extensions/...
-        // Let's hardcode the base for now or assume it's passed in full.
-        // The backend `list_extensions` returns `/extensions/...`.
-        const backendBase = 'http://localhost:8000'; // Helper assumption
+        console.log('ExtensionLoader Init. Inputs:', {
+            url: this.url,
+            id: this.extId,
+            file: this.initialFileName,
+            path: this.currentPath
+        });
+
+        const backendBase = 'http://localhost:8000';
         const fullUrl = this.url.startsWith('http') ? this.url : `${backendBase}${this.url}`;
 
         this.safeUrl = this.sanitizer.bypassSecurityTrustResourceUrl(fullUrl);
 
         this.messageListener = this.handleMessage.bind(this);
         window.addEventListener('message', this.messageListener);
+    }
+
+    // Listen for iframe load to send initial file
+    onFrameLoad() {
+        console.log('ExtensionLoader Iframe Loaded');
+        this.frameLoaded = true;
+        if (this.initialFileName && this.currentPath) {
+            console.log('Sending initial file to extension');
+            // Small delay to ensure inner scripts are ready
+            setTimeout(() => {
+                this.openFile(this.currentPath!, this.initialFileName!);
+            }, 500);
+        }
+    }
+
+    openFile(path: string[], filename: string) {
+        // Send message to extension to read/open this file
+        // The extension (e.g. Monaco) must listen for 'OPEN_FILE' or similar
+        // We'll trust the extension protocol.
+        // Assuming standard protocol: { action: 'OPEN_FILE', payload: { path, filename } }
+        this.sendToExtension({
+            action: 'OPEN_FILE',
+            payload: {
+                path: path,
+                filename: filename
+            }
+        });
+    }
+
+    sendToExtension(message: any) {
+        if (!this.extFrame?.nativeElement?.contentWindow) return;
+        this.extFrame.nativeElement.contentWindow.postMessage(message, '*');
     }
 
     ngOnDestroy() {

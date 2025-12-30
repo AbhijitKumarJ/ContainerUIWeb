@@ -4,6 +4,26 @@
     "version": "1.0.0",
     "entryPoint": "index.html",
     "icon": "fa-solid fa-code",
+    "IsFileHandler": true,
+    "AssociatedFileExtensions": [
+        ".txt",
+        ".py",
+        ".js",
+        ".html",
+        ".css",
+        ".cs",
+        ".java",
+        ".rb",
+        ".log",
+        ".json",
+        ".md",
+        ".csv",
+        ".xml",
+        ".sql",
+        ".json",
+        ".json",
+        ".json"
+    ],
     "defaultSize": {
         "width": 900,
         "height": 700

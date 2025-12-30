@@ -14,6 +14,10 @@ import { BrowserComponent } from '../../apps/browser/browser.component';
 import { CalculatorComponent } from '../../apps/calculator/calculator.component';
 import { SettingsComponent } from '../../apps/settings/settings.component';
 import { ExtensionManagerComponent } from '../../apps/extension-manager/extension-manager.component';
+import { AppRegistryService } from '../../../services/app-registry.service';
+import { ImageViewerComponent } from '../../apps/image-viewer/image-viewer.component';
+import { ServiceManagerComponent } from '../../apps/service-manager/service-manager.component';
+import { FileTransferComponent } from '../../apps/file-transfer/file-transfer.component';
 
 @Component({
   selector: 'app-desktop',
@@ -29,12 +33,15 @@ import { ExtensionManagerComponent } from '../../apps/extension-manager/extensio
       <div class="desktop-icons">
         <app-desktop-icon label="File Explorer" icon="fa-solid fa-folder-open" (dblclick)="openFileExplorer()"></app-desktop-icon>
         <app-desktop-icon label="Terminal" icon="fa-solid fa-terminal" (dblclick)="openTerminal()"></app-desktop-icon>
-        <app-desktop-icon label="Task Manager" icon="fa-solid fa-chart-line" (dblclick)="openProcessManager()"></app-desktop-icon>
+        <app-desktop-icon label="Process Manager" icon="fa-solid fa-chart-line" (dblclick)="openProcessManager()"></app-desktop-icon>
         <app-desktop-icon label="Text Editor" icon="fa-solid fa-file-lines" (dblclick)="openTextEditor()"></app-desktop-icon>
         <app-desktop-icon label="Browser" icon="fa-brands fa-firefox-browser" (dblclick)="openBrowser()"></app-desktop-icon>
         <app-desktop-icon label="Calculator" icon="fa-solid fa-calculator" (dblclick)="openCalculator()"></app-desktop-icon>
         <app-desktop-icon label="Extensions" icon="fa-solid fa-puzzle-piece" (dblclick)="openExtensionManager()"></app-desktop-icon>
+        <app-desktop-icon label="Image Viewer" icon="fa-solid fa-image" (dblclick)="openImageViewer()"></app-desktop-icon>
         <app-desktop-icon label="Settings" icon="fa-solid fa-gear" (dblclick)="openSettings()"></app-desktop-icon>
+        <app-desktop-icon label="Service Manager" icon="fa-solid fa-server" (dblclick)="openServiceManager()"></app-desktop-icon>
+        <app-desktop-icon label="File Transfer" icon="fa-solid fa-right-left" (dblclick)="openFileTransfer()"></app-desktop-icon>
       </div>
 
       @if (wm.showStartMenu()) {
@@ -75,6 +82,40 @@ import { ExtensionManagerComponent } from '../../apps/extension-manager/extensio
 export class DesktopComponent {
   wm = inject(WindowManagerService);
   settings = inject(SettingsService);
+  registry = inject(AppRegistryService);
+
+  constructor() {
+    this.registerApps();
+  }
+
+  registerApps() {
+    this.registry.registerApp({
+      id: 'text-editor',
+      name: 'Text Editor',
+      component: TextEditorComponent,
+      icon: 'fa-solid fa-file-lines',
+      isFileHandler: true,
+      supports: ['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'py', 'java', 'cs', 'xml', 'yaml', 'yml', 'ini', 'log']
+    });
+
+    this.registry.registerApp({
+      id: 'image-viewer',
+      name: 'Image Viewer',
+      component: ImageViewerComponent,
+      icon: 'fa-solid fa-image',
+      isFileHandler: true,
+      supports: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']
+    });
+
+    this.registry.registerApp({
+      id: 'browser',
+      name: 'Browser',
+      component: BrowserComponent,
+      icon: 'fa-brands fa-firefox-browser',
+      isFileHandler: false,
+      supports: ['html', 'htm']
+    });
+  }
 
   openFileExplorer() {
     this.wm.openApp('file-explorer', FileExplorerComponent, 'File Explorer', 'fa-solid fa-folder-open');
@@ -85,7 +126,7 @@ export class DesktopComponent {
   }
 
   openProcessManager() {
-    this.wm.openApp('process-manager', ProcessManagerComponent, 'Task Manager', 'fa-solid fa-chart-line');
+    this.wm.openApp('process-manager', ProcessManagerComponent, 'Process Manager', 'fa-solid fa-chart-line');
   }
 
   openTextEditor() {
@@ -106,5 +147,17 @@ export class DesktopComponent {
 
   openExtensionManager() {
     this.wm.openApp('extension-manager', ExtensionManagerComponent, 'Extensions', 'fa-solid fa-puzzle-piece');
+  }
+
+  openImageViewer() {
+    this.wm.openApp('image-viewer', ImageViewerComponent, 'Image Viewer', 'fa-solid fa-image');
+  }
+
+  openServiceManager() {
+    this.wm.openApp('service-manager', ServiceManagerComponent, 'Service Manager', 'fa-solid fa-server');
+  }
+
+  openFileTransfer() {
+    this.wm.openApp('file-transfer', FileTransferComponent, 'File Transfer', 'fa-solid fa-right-left');
   }
 }

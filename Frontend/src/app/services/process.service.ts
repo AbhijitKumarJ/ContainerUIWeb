@@ -21,4 +21,8 @@ export class ProcessService {
     list(): Observable<Process[]> {
         return this.http.get<Process[]>(`${this.apiUrl}/list`);
     }
+
+    kill(pid: number): Observable<any> {
+        return this.http.delete(`${this.apiUrl}/kill/${pid}`);
+    }
 }

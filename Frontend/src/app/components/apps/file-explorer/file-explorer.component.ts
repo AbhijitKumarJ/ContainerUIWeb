@@ -4,6 +4,8 @@ import { FileSystemService } from '../../../services/file-system.service';
 import { FileNode } from '../../../models/file-node.interface';
 import { WindowManagerService } from '../../../services/window-manager.service';
 import { TextEditorComponent } from '../text-editor/text-editor.component';
+import { ImageViewerComponent } from '../image-viewer/image-viewer.component';
+import { AppRegistryService, AppDefinition } from '../../../services/app-registry.service';
 
 @Component({
   selector: 'app-file-explorer',
@@ -93,15 +95,27 @@ import { TextEditorComponent } from '../text-editor/text-editor.component';
                                     <button class="btn-action delete" (click)="onDelete()" title="Delete">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
+                                    @if (file.type === 'folder') {
+                                        <button class="btn-action" (click)="onCompress()" title="Compress to Zip">
+                                            <i class="fa-solid fa-file-zipper"></i>
+                                        </button>
+                                    }
                                 </div>
                             </div>
 
                             @if (file.type === 'file') {
                                 <div class="actions mt-2">
+                                    @if (file.name.endsWith('.zip')) {
+                                        <button class="btn-action mb-2" (click)="onDecompress()" title="Extract Here">
+                                            <i class="fa-solid fa-box-open"></i> Extract
+                                        </button>
+                                    }
                                     <span class="action-label">Open with:</span>
-                                    <button class="btn-open" (click)="openWith('Text Editor')">
-                                        <i class="fa-solid fa-pen-to-square"></i> Text Editor
-                                    </button>
+                                    @for (app of registry.getAssociatedApps(file.name.split('.').pop() || ''); track app.id) {
+                                      <button class="btn-open" (click)="openWithApp(app)">
+                                          <i [class]="app.icon"></i> {{ app.name }}
+                                      </button>
+                                    }
                                 </div>
                             }
                         } @else {
@@ -320,6 +334,7 @@ import { TextEditorComponent } from '../text-editor/text-editor.component';
             }
             
             .mt-2 { margin-top: 15px; }
+            .mb-2 { margin-bottom: 10px; width: 100%; }
         }
     }
     
@@ -344,6 +359,8 @@ import { TextEditorComponent } from '../text-editor/text-editor.component';
 })
 export class FileExplorerComponent {
   fs = inject(FileSystemService);
+  wm = inject(WindowManagerService);
+  registry = inject(AppRegistryService);
 
   currentPath = signal<string[]>([]);
   files = signal<FileNode[]>([]);
@@ -376,8 +393,46 @@ export class FileExplorerComponent {
     if (file.type === 'folder') {
       this.navigate([...this.currentPath(), file.name]);
     } else {
-      this.onItemClick(file, new MouseEvent('click'));
+      const ext = file.name.split('.').pop()?.toLowerCase();
+
+      const app = this.registry.getDefaultApp(ext || '');
+      if (app) {
+        this.openWithApp(app, file);
+      } else {
+        const apps = this.registry.getAssociatedApps(ext || '');
+        if (apps.length > 0) {
+          this.openWithApp(apps[0], file);
+        } else {
+          // Fallback to text editor for everything else for now, or could show error
+          this.openWithApp({
+            id: 'text-editor',
+            name: 'Text Editor',
+            component: TextEditorComponent,
+            icon: 'fa-solid fa-file-lines',
+            supports: ['*']
+          } as any, file);
+        }
+      }
     }
+  }
+
+  openWithApp(app: AppDefinition, fileOverride?: FileNode) {
+    const file = fileOverride || this.selectedFile();
+    if (!file) return;
+
+    console.log(`Opening ${file.name} with ${app.name}`);
+
+    this.wm.openApp(
+      app.id + '-' + crypto.randomUUID(),
+      app.component,
+      file.name,
+      app.icon,
+      {
+        ...(app.defaultInputs || {}),
+        initialFileName: file.name,
+        currentPath: this.currentPath()
+      }
+    );
   }
 
   onItemClick(file: FileNode, event: MouseEvent) {
@@ -431,18 +486,14 @@ export class FileExplorerComponent {
     const clip = this.clipboard();
     if (!clip) return;
 
-    // We rely on getFileProperties logic to find the destination path
     this.fs.getFileProperties(this.currentPath(), '', 'folder').subscribe({
       next: (props) => {
-        // If successful, props.path is the directory path
         const destDir = props.path;
         if (!destDir) return;
 
-        // Construct destination file path
         let fileName = clip.path.split(/[/\\]/).pop();
-        if (!fileName) fileName = 'item'; // Fallback
+        if (!fileName) fileName = 'item';
 
-        // Simple separator check
         const separator = (destDir.endsWith('\\') || destDir.endsWith('/')) ? '' : '\\';
         const destPath = destDir + separator + fileName;
 
@@ -473,25 +524,32 @@ export class FileExplorerComponent {
     }
   }
 
-  wm = inject(WindowManagerService);
-
-  openWith(appName: string) {
+  onCompress() {
     const file = this.selectedFile();
-    if (!file) return;
+    if (!file || file.type !== 'folder') return;
 
-    console.log(`Opening ${file.name} with ${appName}`);
+    this.fs.compressItem([...this.currentPath(), file.name]).subscribe({
+      next: () => {
+        this.refresh();
+      },
+      error: (err) => {
+        console.error('Compression failed', err);
+        alert('Compression failed');
+      }
+    });
+  }
+  onDecompress() {
+    const file = this.selectedFile();
+    if (!file || !file.name.endsWith('.zip')) return;
 
-    if (appName === 'Text Editor') {
-      this.wm.openApp(
-        'text-editor-' + crypto.randomUUID(),
-        TextEditorComponent,
-        file.name,
-        'fa-solid fa-file-pen',
-        {
-          initialFileName: file.name,
-          currentPath: this.currentPath()
-        }
-      );
-    }
+    this.fs.decompressItem([...this.currentPath(), file.name]).subscribe({
+      next: () => {
+        this.refresh();
+      },
+      error: (err) => {
+        console.error('Decompression failed', err);
+        alert('Decompression failed');
+      }
+    });
   }
 }

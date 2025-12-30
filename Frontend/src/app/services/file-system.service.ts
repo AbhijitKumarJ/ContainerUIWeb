@@ -33,7 +33,7 @@ export class FileSystemService {
 
     private rootDirectory: string | null = null;
 
-    private getFullPath(path: string[]): string {
+    public getFullPath(path: string[]): string {
         if (!this.rootDirectory) return "";
         const separator = this.rootDirectory.endsWith('\\') ? '' : '\\';
         return this.rootDirectory + separator + path.join('\\');
@@ -139,6 +139,35 @@ export class FileSystemService {
             source: sourcePath,
             destination: destPath
         });
+    }
+
+    saveImage(path: string, base64Data: string): Observable<any> {
+        return this.http.post<any>(`${this.apiUrl}/api/filesystem/save_image`, {
+            path: path,
+            image_data: base64Data
+        });
+    }
+
+    compressItem(path: string[]): Observable<any> {
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath(path);
+                return this.http.post<any>(`${this.apiUrl}/api/filesystem/compress`, {
+                    path: fullPath
+                });
+            })
+        );
+    }
+
+    decompressItem(path: string[]): Observable<any> {
+        return this.ensureRoot().pipe(
+            switchMap(() => {
+                const fullPath = this.getFullPath(path);
+                return this.http.post<any>(`${this.apiUrl}/api/filesystem/decompress`, {
+                    path: fullPath
+                });
+            })
+        );
     }
 
     private formatSize(bytes: number): string {

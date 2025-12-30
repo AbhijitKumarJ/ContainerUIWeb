@@ -16,14 +16,18 @@ A web-based desktop environment for managing Docker containers. This project sim
 ### Applications
 | App | Status | Description |
 | :--- | :---: | :--- |
-| **File Explorer** | ✅ Done | Real file system browsing, properties pane, and file operations. |
+| **File Explorer** | ✅ Done | Real file system browsing, properties pane, file operations, and compression/decompression (.zip) support. |
 | **Terminal** | ✅ Done | Real backend execution, directory navigation, and OS-specific command translation. |
-| **Task Manager** | ✅ Done | Real-time system process monitoring using live backend data. |
+| **Process Manager** | ✅ Done | Real-time system process monitoring using live backend data, sorting, filtering, and kill process support. |
+| **Service Manager** | 🚀 In Progress | Real-time system service monitoring with start, stop, and restart functionality. |
 | **Text Editor** | ✅ Done | Fully functional with Open/Save/Save As dialogs connected to backend. |
-| **Browser** | ✅ Done | Iframe-based internal browser with address bar. |
+| **Browser** | ✅ Done | Iframe-based internal browser with address bar, bookmarks support, and limitation warnings. |
 | **Calculator** | ✅ Done | Fully functional standard calculator. |
-| **Settings** | ✅ Done | Customize desktop background (color/image) with local persistence. |
-| **Extensions** | ✅ Done | Manager app to install (`.zip`) and launch third-party extensions. |
+| **File Transfer** | ✅ Done | Dual-pane interface for uploading and downloading files between host and container. |
+| **Settings-Personalization** | ✅ Done | Customize desktop background (color, uploaded images, or system files) with persistence. |
+| **Settings-Default Apps** | ✅ Done | Default Apps tab to set default apps for file types. It provides option to map file extensions to apps and set default app from mapped apps for each file extension. |
+| **Settings-Backup Restore User Data** | ✅ Done | Ability to export user data from the container to the host which includes settings, file type associations, wallpapers, extensions, bookmarks etc. Also, it provides option to import user data from the host to the container through similar zip file. |
+| **Extensions** | ✅ Done | Manager app to install (`.zip`) extensions along with file type associations. Remove extension and file type associations. |
 
 ### System & Theme
 | Feature | Status | Description |
@@ -43,11 +47,5 @@ ng serve
 ```
 Navigate to `http://localhost:4200/`.
 
-## 🔮 Future Roadmap
-- [ ] **Process Control:** Ability to kill actual container processes from Task Manager.
-- [ ] **Improved Setting:** Ability to select image from container os through file picker. Also, uploaded image should be saved in the container at a specific location and should be shown in the settings as a preview of list of images available in that location.
-- [ ] **Theming:** Ability to select from standard list of themes and apply to the desktop via settings.
-- [x] **Advanced Terminal:** Ability to run commands in the container and get the output in the terminal with real live connection to the container terminal. Supports interactive commands like `python`, `nano`, etc. via WebSockets.
-- [ ] **Image Viewer:** Ability to view images in the container through file picker or when image file selected in file explorer(option to open with image viewer in properties panel).
-- [ ] **Extension Manager:** Ability to remove extension and file type associations.
-- [ ] **File Type Association:** Ability to associate file types with extensions and preexixting programs like text editor, terminal, image viewer etc. It shoulld be persistent.
+
+

@@ -16,6 +16,7 @@ import {
   ContentChildren,
   DOCUMENT,
   DatePipe,
+  DecimalPipe,
   DefaultValueAccessor,
   DestroyRef,
   Directive,
@@ -53,8 +54,10 @@ import {
   NgModel,
   NgModule,
   NgModuleFactory$1,
+  NgSelectOption,
   NgStyle,
   NgZone,
+  NumberValueAccessor,
   Observable,
   Optional,
   Output,
@@ -68,6 +71,7 @@ import {
   RendererStyleFlags2,
   RuntimeError,
   SecurityContext,
+  SelectControlValueAccessor,
   SkipSelf,
   Subject,
   Subscription,
@@ -76,6 +80,7 @@ import {
   TemplateRef,
   Testability,
   TestabilityRegistry,
+  TitleCasePipe,
   TracingService,
   VERSION,
   Version,
@@ -106,6 +111,7 @@ import {
   bypassSanitizationTrustUrl,
   catchError,
   combineLatest,
+  computed,
   concat,
   concatMap,
   createComponent,
@@ -165,6 +171,7 @@ import {
   tap,
   throwError,
   unwrapSafeValue,
+  ɵNgSelectMultipleOption,
   ɵsetClassDebugInfo,
   ɵɵInheritDefinitionFeature,
   ɵɵNgOnChangesFeature,
@@ -194,10 +201,13 @@ import {
   ɵɵloadQuery,
   ɵɵnextContext,
   ɵɵpipe,
+  ɵɵpipeBind1,
   ɵɵpipeBind2,
   ɵɵprojection,
   ɵɵprojectionDef,
   ɵɵproperty,
+  ɵɵpropertyInterpolate,
+  ɵɵpureFunction3,
   ɵɵqueryRefresh,
   ɵɵreference,
   ɵɵrepeater,
@@ -214,11 +224,12 @@ import {
   ɵɵtextInterpolate,
   ɵɵtextInterpolate1,
   ɵɵtextInterpolate2,
+  ɵɵtextInterpolate3,
   ɵɵtwoWayBindingSet,
   ɵɵtwoWayListener,
   ɵɵtwoWayProperty,
   ɵɵviewQuery
-} from "./chunk-DRZDMB57.js";
+} from "./chunk-L22HG6HE.js";
 
 // node_modules/@angular/platform-browser/fesm2022/dom_renderer-DGKzginR.mjs
 var EVENT_MANAGER_PLUGINS = new InjectionToken(ngDevMode ? "EventManagerPlugins" : "");
@@ -7762,7 +7773,7 @@ var WindowManagerService = class _WindowManagerService {
           size: { width, height },
           isActive: true
         };
-        import("./chunk-7C54I4RU.js").then((m) => {
+        import("./chunk-35CVDBRH.js").then((m) => {
           newWindow.component = m.FilePickerDialogComponent;
           const context = {
             confirm: (result) => {
@@ -14353,8 +14364,198 @@ var TextEditorComponent = class _TextEditorComponent {
   (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(TextEditorComponent, { className: "TextEditorComponent", filePath: "src/app/components/apps/text-editor/text-editor.component.ts", lineNumber: 88 });
 })();
 
+// src/app/services/app-registry.service.ts
+var AppRegistryService = class _AppRegistryService {
+  apps = /* @__PURE__ */ new Map();
+  // Map of extension (e.g. 'txt') to its configuration
+  associations = signal(/* @__PURE__ */ new Map());
+  constructor() {
+    this.loadAssociations();
+    effect(() => {
+      const obj = Object.fromEntries(this.associations());
+      localStorage.setItem("fileAssociations_v2", JSON.stringify(obj));
+    });
+  }
+  loadAssociations() {
+    const saved = localStorage.getItem("fileAssociations_v2");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const map2 = /* @__PURE__ */ new Map();
+        Object.entries(parsed).forEach(([ext, config]) => {
+          map2.set(ext, config);
+        });
+        this.associations.set(map2);
+      } catch (e) {
+        console.error("Failed to load v2 associations", e);
+      }
+    }
+  }
+  registerApp(app) {
+    if (!this.apps.has(app.id)) {
+      this.apps.set(app.id, app);
+      if (app.isFileHandler) {
+        app.supports.forEach((ext) => {
+          const cleanExt = this.normalizeExt(ext);
+          if (cleanExt !== "*") {
+            this.addAssociation(cleanExt, app.id, false);
+            this.associations.update((current) => {
+              const map2 = new Map(current);
+              const config = map2.get(cleanExt) || { defaultAppId: null, associatedAppIds: [] };
+              if (!config.defaultAppId) {
+                config.defaultAppId = app.id;
+                map2.set(cleanExt, config);
+              }
+              return map2;
+            });
+          }
+        });
+      }
+    }
+  }
+  getApp(appId) {
+    return this.apps.get(appId);
+  }
+  getAllApps() {
+    return Array.from(this.apps.values());
+  }
+  getFileHandlers() {
+    return Array.from(this.apps.values()).filter((app) => app.isFileHandler);
+  }
+  // Get the configured default app for an extension
+  getDefaultApp(extension) {
+    const ext = this.normalizeExt(extension);
+    const config = this.associations().get(ext);
+    if (config?.defaultAppId) {
+      return this.apps.get(config.defaultAppId);
+    }
+    if (config?.associatedAppIds.length && config.associatedAppIds.length > 0) {
+      return this.apps.get(config.associatedAppIds[0]);
+    }
+    return void 0;
+  }
+  // Get all apps associated with this extension (for Open With menu)
+  getAssociatedApps(extension) {
+    const ext = this.normalizeExt(extension);
+    const config = this.associations().get(ext);
+    if (!config)
+      return [];
+    return config.associatedAppIds.map((id) => this.apps.get(id)).filter((app) => !!app);
+  }
+  // Get raw config keys (all known extensions)
+  getConfiguredExtensions() {
+    return Array.from(this.associations().keys()).sort();
+  }
+  // Get raw config for UI
+  getAssociationConfig(extension) {
+    return this.associations().get(this.normalizeExt(extension));
+  }
+  // --- Management Methods ---
+  addExtension(extension) {
+    const ext = this.normalizeExt(extension);
+    this.associations.update((map2) => {
+      if (map2.has(ext))
+        return map2;
+      const newMap = new Map(map2);
+      newMap.set(ext, { defaultAppId: null, associatedAppIds: [] });
+      return newMap;
+    });
+  }
+  removeExtension(extension) {
+    const ext = this.normalizeExt(extension);
+    this.associations.update((map2) => {
+      const newMap = new Map(map2);
+      newMap.delete(ext);
+      return newMap;
+    });
+  }
+  addAssociation(extension, appId, makeDefault = false) {
+    const ext = this.normalizeExt(extension);
+    this.associations.update((map2) => {
+      const newMap = new Map(map2);
+      const config = newMap.get(ext) || { defaultAppId: null, associatedAppIds: [] };
+      if (!config.associatedAppIds.includes(appId)) {
+        config.associatedAppIds = [...config.associatedAppIds, appId];
+      }
+      if (makeDefault) {
+        config.defaultAppId = appId;
+      } else if (!config.defaultAppId) {
+      }
+      newMap.set(ext, config);
+      return newMap;
+    });
+  }
+  removeAssociation(extension, appId) {
+    const ext = this.normalizeExt(extension);
+    this.associations.update((map2) => {
+      const newMap = new Map(map2);
+      const config = newMap.get(ext);
+      if (!config)
+        return map2;
+      config.associatedAppIds = config.associatedAppIds.filter((id) => id !== appId);
+      if (config.defaultAppId === appId) {
+        config.defaultAppId = null;
+        if (config.associatedAppIds.length > 0) {
+          config.defaultAppId = config.associatedAppIds[0];
+        }
+      }
+      newMap.set(ext, config);
+      return newMap;
+    });
+  }
+  unregisterApp(appId) {
+    if (this.apps.has(appId)) {
+      this.apps.delete(appId);
+      this.associations.update((map2) => {
+        const newMap = new Map(map2);
+        for (const [ext, config] of newMap.entries()) {
+          if (config.associatedAppIds.includes(appId)) {
+            config.associatedAppIds = config.associatedAppIds.filter((id) => id !== appId);
+            if (config.defaultAppId === appId) {
+              config.defaultAppId = null;
+              if (config.associatedAppIds.length > 0) {
+                config.defaultAppId = config.associatedAppIds[0];
+              }
+            }
+            newMap.set(ext, config);
+          }
+        }
+        return newMap;
+      });
+    }
+  }
+  setDefaultApp(extension, appId) {
+    const ext = this.normalizeExt(extension);
+    this.associations.update((map2) => {
+      const newMap = new Map(map2);
+      const config = newMap.get(ext);
+      if (!config)
+        return map2;
+      config.defaultAppId = appId;
+      newMap.set(ext, config);
+      return newMap;
+    });
+  }
+  normalizeExt(ext) {
+    return ext.toLowerCase().replace(/^\./, "");
+  }
+  static \u0275fac = function AppRegistryService_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _AppRegistryService)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({ token: _AppRegistryService, factory: _AppRegistryService.\u0275fac, providedIn: "root" });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(AppRegistryService, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], () => [], null);
+})();
+
 // src/app/components/apps/file-explorer/file-explorer.component.ts
 var _forTrack02 = ($index, $item) => $item.name;
+var _forTrack1 = ($index, $item) => $item.id;
 function FileExplorerComponent_For_16_Template(rf, ctx) {
   if (rf & 1) {
     const _r1 = \u0275\u0275getCurrentView();
@@ -14434,18 +14635,68 @@ function FileExplorerComponent_Conditional_21_Template(rf, ctx) {
 function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_31_Template(rf, ctx) {
   if (rf & 1) {
     const _r8 = \u0275\u0275getCurrentView();
-    \u0275\u0275elementStart(0, "div", 40)(1, "span", 32);
-    \u0275\u0275text(2, "Open with:");
-    \u0275\u0275elementEnd();
-    \u0275\u0275elementStart(3, "button", 41);
-    \u0275\u0275listener("click", function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_31_Template_button_click_3_listener() {
+    \u0275\u0275elementStart(0, "button", 42);
+    \u0275\u0275listener("click", function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_31_Template_button_click_0_listener() {
       \u0275\u0275restoreView(_r8);
       const ctx_r2 = \u0275\u0275nextContext(3);
-      return \u0275\u0275resetView(ctx_r2.openWith("Text Editor"));
+      return \u0275\u0275resetView(ctx_r2.onCompress());
     });
-    \u0275\u0275element(4, "i", 42);
-    \u0275\u0275text(5, " Text Editor ");
-    \u0275\u0275elementEnd()();
+    \u0275\u0275element(1, "i", 43);
+    \u0275\u0275elementEnd();
+  }
+}
+function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_Conditional_1_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r9 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "button", 46);
+    \u0275\u0275listener("click", function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_Conditional_1_Template_button_click_0_listener() {
+      \u0275\u0275restoreView(_r9);
+      const ctx_r2 = \u0275\u0275nextContext(4);
+      return \u0275\u0275resetView(ctx_r2.onDecompress());
+    });
+    \u0275\u0275element(1, "i", 47);
+    \u0275\u0275text(2, " Extract ");
+    \u0275\u0275elementEnd();
+  }
+}
+function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_For_5_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r10 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "button", 48);
+    \u0275\u0275listener("click", function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_For_5_Template_button_click_0_listener() {
+      const app_r11 = \u0275\u0275restoreView(_r10).$implicit;
+      const ctx_r2 = \u0275\u0275nextContext(4);
+      return \u0275\u0275resetView(ctx_r2.openWithApp(app_r11));
+    });
+    \u0275\u0275element(1, "i");
+    \u0275\u0275text(2);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const app_r11 = ctx.$implicit;
+    \u0275\u0275advance();
+    \u0275\u0275classMap(app_r11.icon);
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate1(" ", app_r11.name, " ");
+  }
+}
+function FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 41);
+    \u0275\u0275template(1, FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_Conditional_1_Template, 3, 0, "button", 44);
+    \u0275\u0275elementStart(2, "span", 32);
+    \u0275\u0275text(3, "Open with:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275repeaterCreate(4, FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_For_5_Template, 3, 3, "button", 45, _forTrack1);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const file_r12 = \u0275\u0275nextContext(2);
+    const ctx_r2 = \u0275\u0275nextContext();
+    \u0275\u0275advance();
+    \u0275\u0275conditional(file_r12.name.endsWith(".zip") ? 1 : -1);
+    \u0275\u0275advance(3);
+    \u0275\u0275repeater(ctx_r2.registry.getAssociatedApps(file_r12.name.split(".").pop() || ""));
   }
 }
 function FileExplorerComponent_Conditional_23_Conditional_5_Template(rf, ctx) {
@@ -14502,22 +14753,26 @@ function FileExplorerComponent_Conditional_23_Conditional_5_Template(rf, ctx) {
       return \u0275\u0275resetView(ctx_r2.onDelete());
     });
     \u0275\u0275element(30, "i", 39);
-    \u0275\u0275elementEnd()()();
-    \u0275\u0275template(31, FileExplorerComponent_Conditional_23_Conditional_5_Conditional_31_Template, 6, 0, "div", 40);
+    \u0275\u0275elementEnd();
+    \u0275\u0275template(31, FileExplorerComponent_Conditional_23_Conditional_5_Conditional_31_Template, 2, 0, "button", 40);
+    \u0275\u0275elementEnd()();
+    \u0275\u0275template(32, FileExplorerComponent_Conditional_23_Conditional_5_Conditional_32_Template, 6, 1, "div", 41);
   }
   if (rf & 2) {
-    const props_r9 = ctx;
-    const file_r10 = \u0275\u0275nextContext();
+    const props_r13 = ctx;
+    const file_r12 = \u0275\u0275nextContext();
     \u0275\u0275advance(4);
-    \u0275\u0275textInterpolate(props_r9.type);
+    \u0275\u0275textInterpolate(props_r13.type);
     \u0275\u0275advance(5);
-    \u0275\u0275textInterpolate1("", props_r9.size, " bytes");
+    \u0275\u0275textInterpolate1("", props_r13.size, " bytes");
     \u0275\u0275advance(5);
-    \u0275\u0275textInterpolate(\u0275\u0275pipeBind2(15, 5, props_r9.modified, "medium"));
+    \u0275\u0275textInterpolate(\u0275\u0275pipeBind2(15, 6, props_r13.modified, "medium"));
     \u0275\u0275advance(6);
-    \u0275\u0275textInterpolate(props_r9.parent);
+    \u0275\u0275textInterpolate(props_r13.parent);
     \u0275\u0275advance(11);
-    \u0275\u0275conditional(file_r10.type === "file" ? 31 : -1);
+    \u0275\u0275conditional(file_r12.type === "folder" ? 31 : -1);
+    \u0275\u0275advance();
+    \u0275\u0275conditional(file_r12.type === "file" ? 32 : -1);
   }
 }
 function FileExplorerComponent_Conditional_23_Conditional_6_Template(rf, ctx) {
@@ -14535,17 +14790,17 @@ function FileExplorerComponent_Conditional_23_Template(rf, ctx) {
     \u0275\u0275text(3);
     \u0275\u0275elementEnd()();
     \u0275\u0275elementStart(4, "div", 27);
-    \u0275\u0275template(5, FileExplorerComponent_Conditional_23_Conditional_5_Template, 32, 8)(6, FileExplorerComponent_Conditional_23_Conditional_6_Template, 2, 0, "div", 28);
+    \u0275\u0275template(5, FileExplorerComponent_Conditional_23_Conditional_5_Template, 33, 9)(6, FileExplorerComponent_Conditional_23_Conditional_6_Template, 2, 0, "div", 28);
     \u0275\u0275elementEnd();
   }
   if (rf & 2) {
     let tmp_4_0;
-    const file_r10 = ctx;
+    const file_r12 = ctx;
     const ctx_r2 = \u0275\u0275nextContext();
     \u0275\u0275advance();
-    \u0275\u0275property("ngClass", file_r10.type === "folder" ? "fa-folder icon-folder" : "fa-file icon-file");
+    \u0275\u0275property("ngClass", file_r12.type === "folder" ? "fa-folder icon-folder" : "fa-file icon-file");
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate(file_r10.name);
+    \u0275\u0275textInterpolate(file_r12.name);
     \u0275\u0275advance(2);
     \u0275\u0275conditional((tmp_4_0 = ctx_r2.selectedFileProperties()) ? 5 : 6, tmp_4_0);
   }
@@ -14553,7 +14808,7 @@ function FileExplorerComponent_Conditional_23_Template(rf, ctx) {
 function FileExplorerComponent_Conditional_24_Template(rf, ctx) {
   if (rf & 1) {
     \u0275\u0275elementStart(0, "div", 18);
-    \u0275\u0275element(1, "i", 43);
+    \u0275\u0275element(1, "i", 49);
     \u0275\u0275elementStart(2, "p");
     \u0275\u0275text(3, "Select an item to view properties");
     \u0275\u0275elementEnd()();
@@ -14561,6 +14816,8 @@ function FileExplorerComponent_Conditional_24_Template(rf, ctx) {
 }
 var FileExplorerComponent = class _FileExplorerComponent {
   fs = inject(FileSystemService);
+  wm = inject(WindowManagerService);
+  registry = inject(AppRegistryService);
   currentPath = signal([]);
   files = signal([]);
   loading = signal(false);
@@ -14587,8 +14844,35 @@ var FileExplorerComponent = class _FileExplorerComponent {
     if (file.type === "folder") {
       this.navigate([...this.currentPath(), file.name]);
     } else {
-      this.onItemClick(file, new MouseEvent("click"));
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const app = this.registry.getDefaultApp(ext || "");
+      if (app) {
+        this.openWithApp(app, file);
+      } else {
+        const apps = this.registry.getAssociatedApps(ext || "");
+        if (apps.length > 0) {
+          this.openWithApp(apps[0], file);
+        } else {
+          this.openWithApp({
+            id: "text-editor",
+            name: "Text Editor",
+            component: TextEditorComponent,
+            icon: "fa-solid fa-file-lines",
+            supports: ["*"]
+          }, file);
+        }
+      }
     }
+  }
+  openWithApp(app, fileOverride) {
+    const file = fileOverride || this.selectedFile();
+    if (!file)
+      return;
+    console.log(`Opening ${file.name} with ${app.name}`);
+    this.wm.openApp(app.id + "-" + crypto.randomUUID(), app.component, file.name, app.icon, __spreadProps(__spreadValues({}, app.defaultInputs || {}), {
+      initialFileName: file.name,
+      currentPath: this.currentPath()
+    }));
   }
   onItemClick(file, event) {
     event.stopPropagation();
@@ -14670,23 +14954,38 @@ var FileExplorerComponent = class _FileExplorerComponent {
       });
     }
   }
-  wm = inject(WindowManagerService);
-  openWith(appName) {
+  onCompress() {
     const file = this.selectedFile();
-    if (!file)
+    if (!file || file.type !== "folder")
       return;
-    console.log(`Opening ${file.name} with ${appName}`);
-    if (appName === "Text Editor") {
-      this.wm.openApp("text-editor-" + crypto.randomUUID(), TextEditorComponent, file.name, "fa-solid fa-file-pen", {
-        initialFileName: file.name,
-        currentPath: this.currentPath()
-      });
-    }
+    this.fs.compressItem([...this.currentPath(), file.name]).subscribe({
+      next: () => {
+        this.refresh();
+      },
+      error: (err) => {
+        console.error("Compression failed", err);
+        alert("Compression failed");
+      }
+    });
+  }
+  onDecompress() {
+    const file = this.selectedFile();
+    if (!file || !file.name.endsWith(".zip"))
+      return;
+    this.fs.decompressItem([...this.currentPath(), file.name]).subscribe({
+      next: () => {
+        this.refresh();
+      },
+      error: (err) => {
+        console.error("Decompression failed", err);
+        alert("Decompression failed");
+      }
+    });
   }
   static \u0275fac = function FileExplorerComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _FileExplorerComponent)();
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _FileExplorerComponent, selectors: [["app-file-explorer"]], decls: 25, vars: 3, consts: [[1, "explorer-container"], [1, "toolbar"], [1, "actions"], ["title", "New File", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-file-circle-plus"], ["title", "New Folder", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-folder-plus"], ["title", "Paste", 1, "tool-btn", 3, "click", "disabled"], [1, "fa-solid", "fa-paste"], [1, "divider"], [1, "breadcrumb"], [1, "crumb", 3, "click"], [1, "fa-solid", "fa-server"], [1, "content-area"], [1, "main-view"], [1, "file-grid", 3, "click"], [1, "loading"], [1, "properties-panel"], [1, "empty-props"], [1, "separator"], [1, "empty-state"], [1, "file-item", 3, "selected"], [1, "file-item", 3, "dblclick", "click"], [1, "fa-solid", 3, "ngClass"], [1, "file-name"], [1, "prop-header"], [1, "prop-title"], [1, "prop-details"], [1, "loading-props"], [1, "prop-row"], [1, "label"], [1, "value"], [1, "action-label"], [1, "action-buttons"], ["title", "Copy", 1, "btn-action", 3, "click"], [1, "fa-solid", "fa-copy"], ["title", "Cut", 1, "btn-action", 3, "click"], [1, "fa-solid", "fa-scissors"], ["title", "Delete", 1, "btn-action", "delete", 3, "click"], [1, "fa-solid", "fa-trash"], [1, "actions", "mt-2"], [1, "btn-open", 3, "click"], [1, "fa-solid", "fa-pen-to-square"], [1, "fa-solid", "fa-circle-info"]], template: function FileExplorerComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _FileExplorerComponent, selectors: [["app-file-explorer"]], decls: 25, vars: 3, consts: [[1, "explorer-container"], [1, "toolbar"], [1, "actions"], ["title", "New File", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-file-circle-plus"], ["title", "New Folder", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-folder-plus"], ["title", "Paste", 1, "tool-btn", 3, "click", "disabled"], [1, "fa-solid", "fa-paste"], [1, "divider"], [1, "breadcrumb"], [1, "crumb", 3, "click"], [1, "fa-solid", "fa-server"], [1, "content-area"], [1, "main-view"], [1, "file-grid", 3, "click"], [1, "loading"], [1, "properties-panel"], [1, "empty-props"], [1, "separator"], [1, "empty-state"], [1, "file-item", 3, "selected"], [1, "file-item", 3, "dblclick", "click"], [1, "fa-solid", 3, "ngClass"], [1, "file-name"], [1, "prop-header"], [1, "prop-title"], [1, "prop-details"], [1, "loading-props"], [1, "prop-row"], [1, "label"], [1, "value"], [1, "action-label"], [1, "action-buttons"], ["title", "Copy", 1, "btn-action", 3, "click"], [1, "fa-solid", "fa-copy"], ["title", "Cut", 1, "btn-action", 3, "click"], [1, "fa-solid", "fa-scissors"], ["title", "Delete", 1, "btn-action", "delete", 3, "click"], [1, "fa-solid", "fa-trash"], ["title", "Compress to Zip", 1, "btn-action"], [1, "actions", "mt-2"], ["title", "Compress to Zip", 1, "btn-action", 3, "click"], [1, "fa-solid", "fa-file-zipper"], ["title", "Extract Here", 1, "btn-action", "mb-2"], [1, "btn-open"], ["title", "Extract Here", 1, "btn-action", "mb-2", 3, "click"], [1, "fa-solid", "fa-box-open"], [1, "btn-open", 3, "click"], [1, "fa-solid", "fa-circle-info"]], template: function FileExplorerComponent_Template(rf, ctx) {
     if (rf & 1) {
       \u0275\u0275elementStart(0, "div", 0)(1, "div", 1)(2, "div", 2)(3, "button", 3);
       \u0275\u0275listener("click", function FileExplorerComponent_Template_button_click_3_listener() {
@@ -14739,7 +15038,7 @@ var FileExplorerComponent = class _FileExplorerComponent {
       \u0275\u0275advance(3);
       \u0275\u0275conditional((tmp_3_0 = ctx.selectedFile()) ? 23 : 24, tmp_3_0);
     }
-  }, dependencies: [CommonModule, NgClass, DatePipe], styles: ['\n\n.explorer-container[_ngcontent-%COMP%] {\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.toolbar[_ngcontent-%COMP%] {\n  padding: 8px 12px;\n  background: #252526;\n  border-bottom: 1px solid #333;\n  display: flex;\n  align-items: center;\n  gap: 15px;\n}\n.toolbar[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n  align-items: center;\n}\n.tool-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn[_ngcontent-%COMP%]:hover:not(:disabled) {\n  background: #3e3e42;\n  color: white;\n}\n.tool-btn[_ngcontent-%COMP%]:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n.tool-btn[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 1rem;\n}\n.divider[_ngcontent-%COMP%] {\n  color: #555;\n  margin: 0 5px;\n}\n.breadcrumb[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 0.9rem;\n}\n.breadcrumb[_ngcontent-%COMP%]   .crumb[_ngcontent-%COMP%] {\n  cursor: pointer;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.breadcrumb[_ngcontent-%COMP%]   .crumb[_ngcontent-%COMP%]:hover {\n  background: #3e3e42;\n}\n.breadcrumb[_ngcontent-%COMP%]   .separator[_ngcontent-%COMP%] {\n  color: #888;\n}\n.content-area[_ngcontent-%COMP%] {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.main-view[_ngcontent-%COMP%] {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.file-grid[_ngcontent-%COMP%] {\n  flex: 1;\n  padding: 10px;\n  overflow-y: auto;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  grid-auto-rows: min-content;\n  gap: 10px;\n  background: #1e1e1e;\n}\n.file-item[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  padding: 10px;\n  border-radius: 4px;\n  cursor: default;\n  text-align: center;\n  border: 1px solid transparent;\n}\n.file-item[_ngcontent-%COMP%]:hover {\n  background: #2a2d2e;\n}\n.file-item.selected[_ngcontent-%COMP%] {\n  background: #37373d;\n  border-color: #007fd4;\n}\n.file-item[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 2.5rem;\n  margin-bottom: 8px;\n}\n.file-item[_ngcontent-%COMP%]   .icon-folder[_ngcontent-%COMP%] {\n  color: #dcb67a;\n}\n.file-item[_ngcontent-%COMP%]   .icon-file[_ngcontent-%COMP%] {\n  color: #519aba;\n}\n.file-item[_ngcontent-%COMP%]   .file-name[_ngcontent-%COMP%] {\n  font-size: 0.85rem;\n  word-break: break-word;\n  max-width: 100%;\n}\n.properties-panel[_ngcontent-%COMP%] {\n  width: 250px;\n  background: #252526;\n  border-left: 1px solid #333;\n  padding: 15px;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  margin-bottom: 20px;\n  text-align: center;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 3rem;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .icon-folder[_ngcontent-%COMP%] {\n  color: #dcb67a;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .icon-file[_ngcontent-%COMP%] {\n  color: #519aba;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .prop-title[_ngcontent-%COMP%] {\n  font-weight: bold;\n  font-size: 1rem;\n  word-break: break-word;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%] {\n  margin-bottom: 12px;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%]   .label[_ngcontent-%COMP%] {\n  color: #888;\n  font-size: 0.8rem;\n  margin-bottom: 2px;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%]   .value[_ngcontent-%COMP%] {\n  color: #ccc;\n  word-break: break-all;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%] {\n  margin-top: 20px;\n  border-top: 1px solid #3d3d3d;\n  padding-top: 15px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .action-label[_ngcontent-%COMP%] {\n  display: block;\n  color: #888;\n  font-size: 0.85rem;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .action-buttons[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action[_ngcontent-%COMP%] {\n  flex: 1;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: #ccc;\n  padding: 6px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n  color: white;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action.delete[_ngcontent-%COMP%]:hover {\n  background: #a42e2e;\n  border-color: #a42e2e;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%] {\n  width: 100%;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: white;\n  padding: 8px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  justify-content: center;\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .mt-2[_ngcontent-%COMP%] {\n  margin-top: 15px;\n}\n.loading[_ngcontent-%COMP%], \n.empty-state[_ngcontent-%COMP%], \n.loading-props[_ngcontent-%COMP%] {\n  color: #888;\n  margin-top: 20px;\n  width: 100%;\n  text-align: center;\n}\n.empty-props[_ngcontent-%COMP%] {\n  color: #888;\n  text-align: center;\n  margin-top: 50%;\n  transform: translateY(-50%);\n  padding: 20px;\n}\n.empty-props[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 2rem;\n  margin-bottom: 10px;\n  opacity: 0.5;\n}\n.empty-props[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=file-explorer.component.css.map */'] });
+  }, dependencies: [CommonModule, NgClass, DatePipe], styles: ['\n\n.explorer-container[_ngcontent-%COMP%] {\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.toolbar[_ngcontent-%COMP%] {\n  padding: 8px 12px;\n  background: #252526;\n  border-bottom: 1px solid #333;\n  display: flex;\n  align-items: center;\n  gap: 15px;\n}\n.toolbar[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n  align-items: center;\n}\n.tool-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn[_ngcontent-%COMP%]:hover:not(:disabled) {\n  background: #3e3e42;\n  color: white;\n}\n.tool-btn[_ngcontent-%COMP%]:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n.tool-btn[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 1rem;\n}\n.divider[_ngcontent-%COMP%] {\n  color: #555;\n  margin: 0 5px;\n}\n.breadcrumb[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 0.9rem;\n}\n.breadcrumb[_ngcontent-%COMP%]   .crumb[_ngcontent-%COMP%] {\n  cursor: pointer;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.breadcrumb[_ngcontent-%COMP%]   .crumb[_ngcontent-%COMP%]:hover {\n  background: #3e3e42;\n}\n.breadcrumb[_ngcontent-%COMP%]   .separator[_ngcontent-%COMP%] {\n  color: #888;\n}\n.content-area[_ngcontent-%COMP%] {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.main-view[_ngcontent-%COMP%] {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.file-grid[_ngcontent-%COMP%] {\n  flex: 1;\n  padding: 10px;\n  overflow-y: auto;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  grid-auto-rows: min-content;\n  gap: 10px;\n  background: #1e1e1e;\n}\n.file-item[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  padding: 10px;\n  border-radius: 4px;\n  cursor: default;\n  text-align: center;\n  border: 1px solid transparent;\n}\n.file-item[_ngcontent-%COMP%]:hover {\n  background: #2a2d2e;\n}\n.file-item.selected[_ngcontent-%COMP%] {\n  background: #37373d;\n  border-color: #007fd4;\n}\n.file-item[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 2.5rem;\n  margin-bottom: 8px;\n}\n.file-item[_ngcontent-%COMP%]   .icon-folder[_ngcontent-%COMP%] {\n  color: #dcb67a;\n}\n.file-item[_ngcontent-%COMP%]   .icon-file[_ngcontent-%COMP%] {\n  color: #519aba;\n}\n.file-item[_ngcontent-%COMP%]   .file-name[_ngcontent-%COMP%] {\n  font-size: 0.85rem;\n  word-break: break-word;\n  max-width: 100%;\n}\n.properties-panel[_ngcontent-%COMP%] {\n  width: 250px;\n  background: #252526;\n  border-left: 1px solid #333;\n  padding: 15px;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  margin-bottom: 20px;\n  text-align: center;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 3rem;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .icon-folder[_ngcontent-%COMP%] {\n  color: #dcb67a;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .icon-file[_ngcontent-%COMP%] {\n  color: #519aba;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-header[_ngcontent-%COMP%]   .prop-title[_ngcontent-%COMP%] {\n  font-weight: bold;\n  font-size: 1rem;\n  word-break: break-word;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%] {\n  margin-bottom: 12px;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%]   .label[_ngcontent-%COMP%] {\n  color: #888;\n  font-size: 0.8rem;\n  margin-bottom: 2px;\n}\n.properties-panel[_ngcontent-%COMP%]   .prop-details[_ngcontent-%COMP%]   .prop-row[_ngcontent-%COMP%]   .value[_ngcontent-%COMP%] {\n  color: #ccc;\n  word-break: break-all;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%] {\n  margin-top: 20px;\n  border-top: 1px solid #3d3d3d;\n  padding-top: 15px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .action-label[_ngcontent-%COMP%] {\n  display: block;\n  color: #888;\n  font-size: 0.85rem;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .action-buttons[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n  margin-bottom: 10px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action[_ngcontent-%COMP%] {\n  flex: 1;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: #ccc;\n  padding: 6px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n  color: white;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-action.delete[_ngcontent-%COMP%]:hover {\n  background: #a42e2e;\n  border-color: #a42e2e;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%] {\n  width: 100%;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: white;\n  padding: 8px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  justify-content: center;\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .btn-open[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .mt-2[_ngcontent-%COMP%] {\n  margin-top: 15px;\n}\n.properties-panel[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%]   .mb-2[_ngcontent-%COMP%] {\n  margin-bottom: 10px;\n  width: 100%;\n}\n.loading[_ngcontent-%COMP%], \n.empty-state[_ngcontent-%COMP%], \n.loading-props[_ngcontent-%COMP%] {\n  color: #888;\n  margin-top: 20px;\n  width: 100%;\n  text-align: center;\n}\n.empty-props[_ngcontent-%COMP%] {\n  color: #888;\n  text-align: center;\n  margin-top: 50%;\n  transform: translateY(-50%);\n  padding: 20px;\n}\n.empty-props[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 2rem;\n  margin-bottom: 10px;\n  opacity: 0.5;\n}\n.empty-props[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=file-explorer.component.css.map */'] });
 };
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(FileExplorerComponent, [{
@@ -14828,15 +15127,27 @@ var FileExplorerComponent = class _FileExplorerComponent {
                                     <button class="btn-action delete" (click)="onDelete()" title="Delete">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
+                                    @if (file.type === 'folder') {
+                                        <button class="btn-action" (click)="onCompress()" title="Compress to Zip">
+                                            <i class="fa-solid fa-file-zipper"></i>
+                                        </button>
+                                    }
                                 </div>
                             </div>
 
                             @if (file.type === 'file') {
                                 <div class="actions mt-2">
+                                    @if (file.name.endsWith('.zip')) {
+                                        <button class="btn-action mb-2" (click)="onDecompress()" title="Extract Here">
+                                            <i class="fa-solid fa-box-open"></i> Extract
+                                        </button>
+                                    }
                                     <span class="action-label">Open with:</span>
-                                    <button class="btn-open" (click)="openWith('Text Editor')">
-                                        <i class="fa-solid fa-pen-to-square"></i> Text Editor
-                                    </button>
+                                    @for (app of registry.getAssociatedApps(file.name.split('.').pop() || ''); track app.id) {
+                                      <button class="btn-open" (click)="openWithApp(app)">
+                                          <i [class]="app.icon"></i> {{ app.name }}
+                                      </button>
+                                    }
                                 </div>
                             }
                         } @else {
@@ -14853,11 +15164,11 @@ var FileExplorerComponent = class _FileExplorerComponent {
         </div>
       </div>
     </div>
-  `, styles: ['/* angular:styles/component:css;7bd04fde4d57acea740ac2f0c0e0b28fd667871115abe8f1e1feb82d4eee1673;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/file-explorer/file-explorer.component.ts */\n.explorer-container {\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.toolbar {\n  padding: 8px 12px;\n  background: #252526;\n  border-bottom: 1px solid #333;\n  display: flex;\n  align-items: center;\n  gap: 15px;\n}\n.toolbar .actions {\n  display: flex;\n  gap: 5px;\n  align-items: center;\n}\n.tool-btn {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn:hover:not(:disabled) {\n  background: #3e3e42;\n  color: white;\n}\n.tool-btn:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n.tool-btn i {\n  font-size: 1rem;\n}\n.divider {\n  color: #555;\n  margin: 0 5px;\n}\n.breadcrumb {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 0.9rem;\n}\n.breadcrumb .crumb {\n  cursor: pointer;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.breadcrumb .crumb:hover {\n  background: #3e3e42;\n}\n.breadcrumb .separator {\n  color: #888;\n}\n.content-area {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.main-view {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.file-grid {\n  flex: 1;\n  padding: 10px;\n  overflow-y: auto;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  grid-auto-rows: min-content;\n  gap: 10px;\n  background: #1e1e1e;\n}\n.file-item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  padding: 10px;\n  border-radius: 4px;\n  cursor: default;\n  text-align: center;\n  border: 1px solid transparent;\n}\n.file-item:hover {\n  background: #2a2d2e;\n}\n.file-item.selected {\n  background: #37373d;\n  border-color: #007fd4;\n}\n.file-item i {\n  font-size: 2.5rem;\n  margin-bottom: 8px;\n}\n.file-item .icon-folder {\n  color: #dcb67a;\n}\n.file-item .icon-file {\n  color: #519aba;\n}\n.file-item .file-name {\n  font-size: 0.85rem;\n  word-break: break-word;\n  max-width: 100%;\n}\n.properties-panel {\n  width: 250px;\n  background: #252526;\n  border-left: 1px solid #333;\n  padding: 15px;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel .prop-header {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  margin-bottom: 20px;\n  text-align: center;\n}\n.properties-panel .prop-header i {\n  font-size: 3rem;\n  margin-bottom: 10px;\n}\n.properties-panel .prop-header .icon-folder {\n  color: #dcb67a;\n}\n.properties-panel .prop-header .icon-file {\n  color: #519aba;\n}\n.properties-panel .prop-header .prop-title {\n  font-weight: bold;\n  font-size: 1rem;\n  word-break: break-word;\n}\n.properties-panel .prop-details {\n  font-size: 0.9rem;\n}\n.properties-panel .prop-details .prop-row {\n  margin-bottom: 12px;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel .prop-details .prop-row .label {\n  color: #888;\n  font-size: 0.8rem;\n  margin-bottom: 2px;\n}\n.properties-panel .prop-details .prop-row .value {\n  color: #ccc;\n  word-break: break-all;\n}\n.properties-panel .actions {\n  margin-top: 20px;\n  border-top: 1px solid #3d3d3d;\n  padding-top: 15px;\n}\n.properties-panel .actions .action-label {\n  display: block;\n  color: #888;\n  font-size: 0.85rem;\n  margin-bottom: 10px;\n}\n.properties-panel .actions .action-buttons {\n  display: flex;\n  gap: 5px;\n  margin-bottom: 10px;\n}\n.properties-panel .actions .btn-action {\n  flex: 1;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: #ccc;\n  padding: 6px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.properties-panel .actions .btn-action:hover {\n  background: #4b4b4b;\n  color: white;\n}\n.properties-panel .actions .btn-action.delete:hover {\n  background: #a42e2e;\n  border-color: #a42e2e;\n}\n.properties-panel .actions .btn-open {\n  width: 100%;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: white;\n  padding: 8px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  justify-content: center;\n  font-size: 0.9rem;\n}\n.properties-panel .actions .btn-open:hover {\n  background: #4b4b4b;\n}\n.properties-panel .actions .btn-open i {\n  font-size: 0.9rem;\n}\n.properties-panel .actions .mt-2 {\n  margin-top: 15px;\n}\n.loading,\n.empty-state,\n.loading-props {\n  color: #888;\n  margin-top: 20px;\n  width: 100%;\n  text-align: center;\n}\n.empty-props {\n  color: #888;\n  text-align: center;\n  margin-top: 50%;\n  transform: translateY(-50%);\n  padding: 20px;\n}\n.empty-props i {\n  font-size: 2rem;\n  margin-bottom: 10px;\n  opacity: 0.5;\n}\n.empty-props p {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=file-explorer.component.css.map */\n'] }]
+  `, styles: ['/* angular:styles/component:css;1f01dbf1e11cb737cbe388e3c2e6145d01f329ca6bfbfb44e5fa38b01b69ec85;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/file-explorer/file-explorer.component.ts */\n.explorer-container {\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.toolbar {\n  padding: 8px 12px;\n  background: #252526;\n  border-bottom: 1px solid #333;\n  display: flex;\n  align-items: center;\n  gap: 15px;\n}\n.toolbar .actions {\n  display: flex;\n  gap: 5px;\n  align-items: center;\n}\n.tool-btn {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn:hover:not(:disabled) {\n  background: #3e3e42;\n  color: white;\n}\n.tool-btn:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n.tool-btn i {\n  font-size: 1rem;\n}\n.divider {\n  color: #555;\n  margin: 0 5px;\n}\n.breadcrumb {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 0.9rem;\n}\n.breadcrumb .crumb {\n  cursor: pointer;\n  padding: 2px 6px;\n  border-radius: 4px;\n}\n.breadcrumb .crumb:hover {\n  background: #3e3e42;\n}\n.breadcrumb .separator {\n  color: #888;\n}\n.content-area {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.main-view {\n  flex: 1;\n  display: flex;\n  overflow: hidden;\n}\n.file-grid {\n  flex: 1;\n  padding: 10px;\n  overflow-y: auto;\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  grid-auto-rows: min-content;\n  gap: 10px;\n  background: #1e1e1e;\n}\n.file-item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  padding: 10px;\n  border-radius: 4px;\n  cursor: default;\n  text-align: center;\n  border: 1px solid transparent;\n}\n.file-item:hover {\n  background: #2a2d2e;\n}\n.file-item.selected {\n  background: #37373d;\n  border-color: #007fd4;\n}\n.file-item i {\n  font-size: 2.5rem;\n  margin-bottom: 8px;\n}\n.file-item .icon-folder {\n  color: #dcb67a;\n}\n.file-item .icon-file {\n  color: #519aba;\n}\n.file-item .file-name {\n  font-size: 0.85rem;\n  word-break: break-word;\n  max-width: 100%;\n}\n.properties-panel {\n  width: 250px;\n  background: #252526;\n  border-left: 1px solid #333;\n  padding: 15px;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel .prop-header {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  margin-bottom: 20px;\n  text-align: center;\n}\n.properties-panel .prop-header i {\n  font-size: 3rem;\n  margin-bottom: 10px;\n}\n.properties-panel .prop-header .icon-folder {\n  color: #dcb67a;\n}\n.properties-panel .prop-header .icon-file {\n  color: #519aba;\n}\n.properties-panel .prop-header .prop-title {\n  font-weight: bold;\n  font-size: 1rem;\n  word-break: break-word;\n}\n.properties-panel .prop-details {\n  font-size: 0.9rem;\n}\n.properties-panel .prop-details .prop-row {\n  margin-bottom: 12px;\n  display: flex;\n  flex-direction: column;\n}\n.properties-panel .prop-details .prop-row .label {\n  color: #888;\n  font-size: 0.8rem;\n  margin-bottom: 2px;\n}\n.properties-panel .prop-details .prop-row .value {\n  color: #ccc;\n  word-break: break-all;\n}\n.properties-panel .actions {\n  margin-top: 20px;\n  border-top: 1px solid #3d3d3d;\n  padding-top: 15px;\n}\n.properties-panel .actions .action-label {\n  display: block;\n  color: #888;\n  font-size: 0.85rem;\n  margin-bottom: 10px;\n}\n.properties-panel .actions .action-buttons {\n  display: flex;\n  gap: 5px;\n  margin-bottom: 10px;\n}\n.properties-panel .actions .btn-action {\n  flex: 1;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: #ccc;\n  padding: 6px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.properties-panel .actions .btn-action:hover {\n  background: #4b4b4b;\n  color: white;\n}\n.properties-panel .actions .btn-action.delete:hover {\n  background: #a42e2e;\n  border-color: #a42e2e;\n}\n.properties-panel .actions .btn-open {\n  width: 100%;\n  background: #3c3c3c;\n  border: 1px solid #454545;\n  color: white;\n  padding: 8px;\n  border-radius: 4px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  justify-content: center;\n  font-size: 0.9rem;\n}\n.properties-panel .actions .btn-open:hover {\n  background: #4b4b4b;\n}\n.properties-panel .actions .btn-open i {\n  font-size: 0.9rem;\n}\n.properties-panel .actions .mt-2 {\n  margin-top: 15px;\n}\n.properties-panel .actions .mb-2 {\n  margin-bottom: 10px;\n  width: 100%;\n}\n.loading,\n.empty-state,\n.loading-props {\n  color: #888;\n  margin-top: 20px;\n  width: 100%;\n  text-align: center;\n}\n.empty-props {\n  color: #888;\n  text-align: center;\n  margin-top: 50%;\n  transform: translateY(-50%);\n  padding: 20px;\n}\n.empty-props i {\n  font-size: 2rem;\n  margin-bottom: 10px;\n  opacity: 0.5;\n}\n.empty-props p {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=file-explorer.component.css.map */\n'] }]
   }], () => [], null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(FileExplorerComponent, { className: "FileExplorerComponent", filePath: "src/app/components/apps/file-explorer/file-explorer.component.ts", lineNumber: 345 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(FileExplorerComponent, { className: "FileExplorerComponent", filePath: "src/app/components/apps/file-explorer/file-explorer.component.ts", lineNumber: 360 });
 })();
 
 // node_modules/@xterm/xterm/lib/xterm.mjs
@@ -25448,6 +25759,9 @@ var ProcessService = class _ProcessService {
   list() {
     return this.http.get(`${this.apiUrl}/list`);
   }
+  kill(pid) {
+    return this.http.delete(`${this.apiUrl}/kill/${pid}`);
+  }
   static \u0275fac = function ProcessService_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _ProcessService)(\u0275\u0275inject(HttpClient));
   };
@@ -25464,8 +25778,9 @@ var ProcessService = class _ProcessService {
 
 // src/app/components/apps/process-manager/process-manager.component.ts
 var _forTrack03 = ($index, $item) => $item.pid;
-function ProcessManagerComponent_For_22_Template(rf, ctx) {
+function ProcessManagerComponent_For_31_Template(rf, ctx) {
   if (rf & 1) {
+    const _r1 = \u0275\u0275getCurrentView();
     \u0275\u0275elementStart(0, "tr")(1, "td");
     \u0275\u0275text(2);
     \u0275\u0275elementEnd();
@@ -25480,33 +25795,41 @@ function ProcessManagerComponent_For_22_Template(rf, ctx) {
     \u0275\u0275elementEnd();
     \u0275\u0275elementStart(9, "td");
     \u0275\u0275text(10);
-    \u0275\u0275elementEnd()();
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(11, "td")(12, "button", 10);
+    \u0275\u0275listener("click", function ProcessManagerComponent_For_31_Template_button_click_12_listener() {
+      const proc_r2 = \u0275\u0275restoreView(_r1).$implicit;
+      const ctx_r2 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r2.killProcess(proc_r2.pid));
+    });
+    \u0275\u0275text(13, "Kill");
+    \u0275\u0275elementEnd()()();
   }
   if (rf & 2) {
-    const proc_r1 = ctx.$implicit;
-    const ctx_r1 = \u0275\u0275nextContext();
+    const proc_r2 = ctx.$implicit;
+    const ctx_r2 = \u0275\u0275nextContext();
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate(proc_r1.pid);
+    \u0275\u0275textInterpolate(proc_r2.pid);
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate(proc_r1.name);
+    \u0275\u0275textInterpolate(proc_r2.name);
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate(proc_r1.username || "-");
+    \u0275\u0275textInterpolate(proc_r2.username || "-");
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate1("", proc_r1.cpu_percent.toFixed(1), "%");
+    \u0275\u0275textInterpolate1("", proc_r2.cpu_percent.toFixed(1), "%");
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate(ctx_r1.formatBytes(proc_r1.memory_bytes));
+    \u0275\u0275textInterpolate(ctx_r2.formatBytes(proc_r2.memory_bytes));
   }
 }
-function ProcessManagerComponent_Conditional_23_Template(rf, ctx) {
+function ProcessManagerComponent_Conditional_32_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275elementStart(0, "tr")(1, "td", 6);
+    \u0275\u0275elementStart(0, "tr")(1, "td", 11);
     \u0275\u0275text(2, "No processes found");
     \u0275\u0275elementEnd()();
   }
 }
-function ProcessManagerComponent_Conditional_24_Template(rf, ctx) {
+function ProcessManagerComponent_Conditional_33_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275elementStart(0, "div", 5);
+    \u0275\u0275elementStart(0, "div", 9);
     \u0275\u0275text(1, "Loading processes...");
     \u0275\u0275elementEnd();
   }
@@ -25515,6 +25838,28 @@ var ProcessManagerComponent = class _ProcessManagerComponent {
   processService;
   processes = signal([]);
   loading = signal(false);
+  // Sorting and Filtering
+  sortColumn = signal("name");
+  sortDirection = signal("asc");
+  filterQuery = signal("");
+  filteredProcesses = computed(() => {
+    const procs = this.processes();
+    const query = this.filterQuery().toLowerCase();
+    const col = this.sortColumn();
+    const dir = this.sortDirection();
+    let result = procs;
+    if (query) {
+      result = result.filter((p) => p.name.toLowerCase().includes(query) || p.username && p.username.toLowerCase().includes(query));
+    }
+    return result.sort((a, b2) => {
+      const valA = a[col];
+      const valB = b2[col];
+      if (valA === valB)
+        return 0;
+      const comparison = valA > valB ? 1 : -1;
+      return dir === "asc" ? comparison : -comparison;
+    });
+  });
   intervalId;
   constructor(processService) {
     this.processService = processService;
@@ -25547,6 +25892,19 @@ var ProcessManagerComponent = class _ProcessManagerComponent {
       }
     });
   }
+  killProcess(pid) {
+    if (confirm(`Are you sure you want to terminate process ${pid}?`)) {
+      this.processService.kill(pid).subscribe({
+        next: () => {
+          this.refresh();
+        },
+        error: (err) => {
+          console.error("Failed to kill process", err);
+          alert("Failed to kill process");
+        }
+      });
+    }
+  }
   formatBytes(bytes, decimals = 2) {
     if (bytes === 0)
       return "0 Bytes";
@@ -25556,61 +25914,118 @@ var ProcessManagerComponent = class _ProcessManagerComponent {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
   }
+  toggleSort(column) {
+    if (this.sortColumn() === column) {
+      this.sortDirection.set(this.sortDirection() === "asc" ? "desc" : "asc");
+    } else {
+      this.sortColumn.set(column);
+      this.sortDirection.set("asc");
+    }
+  }
+  getSortIcon(column) {
+    if (this.sortColumn() !== column)
+      return "fa-solid fa-sort";
+    return this.sortDirection() === "asc" ? "fa-solid fa-sort-up" : "fa-solid fa-sort-down";
+  }
   static \u0275fac = function ProcessManagerComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _ProcessManagerComponent)(\u0275\u0275directiveInject(ProcessService));
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ProcessManagerComponent, selectors: [["app-process-manager"]], decls: 25, vars: 3, consts: [[1, "pm-container"], [1, "header"], [1, "btn", "btn-sm", "btn-outline-light", 3, "click", "disabled"], [1, "table-responsive"], [1, "table", "table-dark", "table-striped", "table-hover", "table-sm"], [1, "text-center", "mt-2"], ["colspan", "5", 1, "text-center"]], template: function ProcessManagerComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ProcessManagerComponent, selectors: [["app-process-manager"]], decls: 34, vars: 14, consts: [[1, "pm-container"], [1, "header"], [1, "d-flex", "align-items-center"], [1, "mb-0", "me-3"], ["type", "text", "placeholder", "Filter by name or user...", 1, "form-control", "form-control-sm", 2, "width", "250px", "background", "rgba(255,255,255,0.1)", "color", "white", "border", "1px solid rgba(255,255,255,0.2)", 3, "ngModelChange", "ngModel"], [1, "btn", "btn-sm", "btn-outline-light", 3, "click", "disabled"], [1, "table-responsive"], [1, "table", "table-dark", "table-striped", "table-hover", "table-sm"], [2, "cursor", "pointer", 3, "click"], [1, "text-center", "mt-2"], [1, "btn", "btn-danger", "btn-sm", 3, "click"], ["colspan", "6", 1, "text-center"]], template: function ProcessManagerComponent_Template(rf, ctx) {
     if (rf & 1) {
-      \u0275\u0275elementStart(0, "div", 0)(1, "div", 1)(2, "h5");
-      \u0275\u0275text(3, "Running Processes");
+      \u0275\u0275elementStart(0, "div", 0)(1, "div", 1)(2, "div", 2)(3, "h5", 3);
+      \u0275\u0275text(4, "Running Processes");
       \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(4, "button", 2);
-      \u0275\u0275listener("click", function ProcessManagerComponent_Template_button_click_4_listener() {
+      \u0275\u0275elementStart(5, "input", 4);
+      \u0275\u0275twoWayListener("ngModelChange", function ProcessManagerComponent_Template_input_ngModelChange_5_listener($event) {
+        \u0275\u0275twoWayBindingSet(ctx.filterQuery, $event) || (ctx.filterQuery = $event);
+        return $event;
+      });
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(6, "button", 5);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_button_click_6_listener() {
         return ctx.refresh();
       });
-      \u0275\u0275text(5, "Refresh");
+      \u0275\u0275text(7, "Refresh");
       \u0275\u0275elementEnd()();
-      \u0275\u0275elementStart(6, "div", 3)(7, "table", 4)(8, "thead")(9, "tr")(10, "th");
-      \u0275\u0275text(11, "PID");
+      \u0275\u0275elementStart(8, "div", 6)(9, "table", 7)(10, "thead")(11, "tr")(12, "th", 8);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_th_click_12_listener() {
+        return ctx.toggleSort("pid");
+      });
+      \u0275\u0275text(13, "PID ");
+      \u0275\u0275element(14, "i");
       \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(12, "th");
-      \u0275\u0275text(13, "Name");
+      \u0275\u0275elementStart(15, "th", 8);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_th_click_15_listener() {
+        return ctx.toggleSort("name");
+      });
+      \u0275\u0275text(16, "Name ");
+      \u0275\u0275element(17, "i");
       \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(14, "th");
-      \u0275\u0275text(15, "User");
+      \u0275\u0275elementStart(18, "th", 8);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_th_click_18_listener() {
+        return ctx.toggleSort("username");
+      });
+      \u0275\u0275text(19, "User ");
+      \u0275\u0275element(20, "i");
       \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(16, "th");
-      \u0275\u0275text(17, "CPU");
+      \u0275\u0275elementStart(21, "th", 8);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_th_click_21_listener() {
+        return ctx.toggleSort("cpu_percent");
+      });
+      \u0275\u0275text(22, "CPU ");
+      \u0275\u0275element(23, "i");
       \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(18, "th");
-      \u0275\u0275text(19, "Mem");
+      \u0275\u0275elementStart(24, "th", 8);
+      \u0275\u0275listener("click", function ProcessManagerComponent_Template_th_click_24_listener() {
+        return ctx.toggleSort("memory_bytes");
+      });
+      \u0275\u0275text(25, "Mem ");
+      \u0275\u0275element(26, "i");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(27, "th");
+      \u0275\u0275text(28, "Action");
       \u0275\u0275elementEnd()()();
-      \u0275\u0275elementStart(20, "tbody");
-      \u0275\u0275repeaterCreate(21, ProcessManagerComponent_For_22_Template, 11, 5, "tr", null, _forTrack03);
-      \u0275\u0275template(23, ProcessManagerComponent_Conditional_23_Template, 3, 0, "tr");
+      \u0275\u0275elementStart(29, "tbody");
+      \u0275\u0275repeaterCreate(30, ProcessManagerComponent_For_31_Template, 14, 5, "tr", null, _forTrack03);
+      \u0275\u0275template(32, ProcessManagerComponent_Conditional_32_Template, 3, 0, "tr");
       \u0275\u0275elementEnd()()();
-      \u0275\u0275template(24, ProcessManagerComponent_Conditional_24_Template, 2, 0, "div", 5);
+      \u0275\u0275template(33, ProcessManagerComponent_Conditional_33_Template, 2, 0, "div", 9);
       \u0275\u0275elementEnd();
     }
     if (rf & 2) {
-      \u0275\u0275advance(4);
-      \u0275\u0275property("disabled", ctx.loading());
-      \u0275\u0275advance(17);
-      \u0275\u0275repeater(ctx.processes());
-      \u0275\u0275advance(2);
-      \u0275\u0275conditional(ctx.processes().length === 0 && !ctx.loading() ? 23 : -1);
+      \u0275\u0275advance(5);
+      \u0275\u0275twoWayProperty("ngModel", ctx.filterQuery);
       \u0275\u0275advance();
-      \u0275\u0275conditional(ctx.loading() ? 24 : -1);
+      \u0275\u0275property("disabled", ctx.loading());
+      \u0275\u0275advance(8);
+      \u0275\u0275classMap(ctx.getSortIcon("pid"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("name"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("username"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("cpu_percent"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("memory_bytes"));
+      \u0275\u0275advance(4);
+      \u0275\u0275repeater(ctx.filteredProcesses());
+      \u0275\u0275advance(2);
+      \u0275\u0275conditional(ctx.filteredProcesses().length === 0 && !ctx.loading() ? 32 : -1);
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.loading() ? 33 : -1);
     }
-  }, dependencies: [CommonModule, HttpClientModule], styles: ["\n\n.pm-container[_ngcontent-%COMP%] {\n  height: 100%;\n  background: #1e1e1e;\n  color: #eee;\n  padding: 10px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n}\n.header[_ngcontent-%COMP%] {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 10px;\n}\n.table-responsive[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n}\ntable[_ngcontent-%COMP%] {\n  margin-bottom: 0;\n}\n/*# sourceMappingURL=process-manager.component.css.map */"] });
+  }, dependencies: [CommonModule, HttpClientModule, FormsModule, DefaultValueAccessor, NgControlStatus, NgModel], styles: ["\n\n.pm-container[_ngcontent-%COMP%] {\n  height: 100%;\n  background: #1e1e1e;\n  color: #eee;\n  padding: 10px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n}\n.header[_ngcontent-%COMP%] {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 10px;\n}\n.table-responsive[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n}\ntable[_ngcontent-%COMP%] {\n  margin-bottom: 0;\n}\n/*# sourceMappingURL=process-manager.component.css.map */"] });
 };
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ProcessManagerComponent, [{
     type: Component,
-    args: [{ selector: "app-process-manager", standalone: true, imports: [CommonModule, HttpClientModule], template: `
+    args: [{ selector: "app-process-manager", standalone: true, imports: [CommonModule, HttpClientModule, FormsModule], template: `
     <div class="pm-container">
       <div class="header">
-        <h5>Running Processes</h5>
+        <div class="d-flex align-items-center">
+            <h5 class="mb-0 me-3">Running Processes</h5>
+            <input type="text" [(ngModel)]="filterQuery" placeholder="Filter by name or user..." class="form-control form-control-sm" style="width: 250px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+        </div>
         <button class="btn btn-sm btn-outline-light" (click)="refresh()" [disabled]="loading()">Refresh</button>
       </div>
 
@@ -25618,25 +26033,29 @@ var ProcessManagerComponent = class _ProcessManagerComponent {
         <table class="table table-dark table-striped table-hover table-sm">
           <thead>
             <tr>
-              <th>PID</th>
-              <th>Name</th>
-              <th>User</th>
-              <th>CPU</th>
-              <th>Mem</th>
+              <th (click)="toggleSort('pid')" style="cursor: pointer">PID <i [class]="getSortIcon('pid')"></i></th>
+              <th (click)="toggleSort('name')" style="cursor: pointer">Name <i [class]="getSortIcon('name')"></i></th>
+              <th (click)="toggleSort('username')" style="cursor: pointer">User <i [class]="getSortIcon('username')"></i></th>
+              <th (click)="toggleSort('cpu_percent')" style="cursor: pointer">CPU <i [class]="getSortIcon('cpu_percent')"></i></th>
+              <th (click)="toggleSort('memory_bytes')" style="cursor: pointer">Mem <i [class]="getSortIcon('memory_bytes')"></i></th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            @for (proc of processes(); track proc.pid) {
+            @for (proc of filteredProcesses(); track proc.pid) {
               <tr>
                 <td>{{ proc.pid }}</td>
                 <td>{{ proc.name }}</td>
                 <td>{{ proc.username || '-' }}</td>
                 <td>{{ proc.cpu_percent.toFixed(1) }}%</td>
                 <td>{{ formatBytes(proc.memory_bytes) }}</td>
+                <td>
+                  <button class="btn btn-danger btn-sm" (click)="killProcess(proc.pid)">Kill</button>
+                </td>
               </tr>
             }
-            @if (processes().length === 0 && !loading()) {
-               <tr><td colspan="5" class="text-center">No processes found</td></tr>
+            @if (filteredProcesses().length === 0 && !loading()) {
+               <tr><td colspan="6" class="text-center">No processes found</td></tr>
             }
           </tbody>
         </table>
@@ -25649,45 +26068,497 @@ var ProcessManagerComponent = class _ProcessManagerComponent {
   }], () => [{ type: ProcessService }], null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ProcessManagerComponent, { className: "ProcessManagerComponent", filePath: "src/app/components/apps/process-manager/process-manager.component.ts", lineNumber: 77 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ProcessManagerComponent, { className: "ProcessManagerComponent", filePath: "src/app/components/apps/process-manager/process-manager.component.ts", lineNumber: 86 });
+})();
+
+// src/app/services/service-manager.service.ts
+var ServiceManagerService = class _ServiceManagerService {
+  http;
+  apiUrl = "http://localhost:8000/api/services";
+  constructor(http) {
+    this.http = http;
+  }
+  list() {
+    return this.http.get(`${this.apiUrl}/list`);
+  }
+  start(name) {
+    return this.http.post(`${this.apiUrl}/start/${name}`, {});
+  }
+  stop(name) {
+    return this.http.post(`${this.apiUrl}/stop/${name}`, {});
+  }
+  restart(name) {
+    return this.http.post(`${this.apiUrl}/restart/${name}`, {});
+  }
+  static \u0275fac = function ServiceManagerService_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _ServiceManagerService)(\u0275\u0275inject(HttpClient));
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({ token: _ServiceManagerService, factory: _ServiceManagerService.\u0275fac, providedIn: "root" });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ServiceManagerService, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], () => [{ type: HttpClient }], null);
+})();
+
+// src/app/components/apps/service-manager/service-manager.component.ts
+var _c03 = (a0, a1, a2) => ({ "bg-success": a0, "bg-danger": a1, "bg-warning": a2 });
+var _forTrack04 = ($index, $item) => $item.name;
+function ServiceManagerComponent_Conditional_1_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r1 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 1);
+    \u0275\u0275element(1, "i", 11);
+    \u0275\u0275text(2);
+    \u0275\u0275elementStart(3, "button", 12);
+    \u0275\u0275listener("click", function ServiceManagerComponent_Conditional_1_Template_button_click_3_listener() {
+      \u0275\u0275restoreView(_r1);
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.errorMsg.set(""));
+    });
+    \u0275\u0275elementEnd()();
+  }
+  if (rf & 2) {
+    const ctx_r1 = \u0275\u0275nextContext();
+    \u0275\u0275advance(2);
+    \u0275\u0275textInterpolate1(" ", ctx_r1.errorMsg(), " ");
+  }
+}
+function ServiceManagerComponent_For_26_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r3 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "tr")(1, "td");
+    \u0275\u0275text(2);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "td");
+    \u0275\u0275text(4);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(5, "td")(6, "span", 13);
+    \u0275\u0275text(7);
+    \u0275\u0275pipe(8, "titlecase");
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(9, "td", 14)(10, "button", 15);
+    \u0275\u0275listener("click", function ServiceManagerComponent_For_26_Template_button_click_10_listener() {
+      const svc_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.control(svc_r4.name, "start"));
+    });
+    \u0275\u0275element(11, "i", 16);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(12, "button", 17);
+    \u0275\u0275listener("click", function ServiceManagerComponent_For_26_Template_button_click_12_listener() {
+      const svc_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.control(svc_r4.name, "stop"));
+    });
+    \u0275\u0275element(13, "i", 18);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(14, "button", 19);
+    \u0275\u0275listener("click", function ServiceManagerComponent_For_26_Template_button_click_14_listener() {
+      const svc_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.control(svc_r4.name, "restart"));
+    });
+    \u0275\u0275element(15, "i", 20);
+    \u0275\u0275elementEnd()()();
+  }
+  if (rf & 2) {
+    const svc_r4 = ctx.$implicit;
+    const ctx_r1 = \u0275\u0275nextContext();
+    \u0275\u0275advance(2);
+    \u0275\u0275textInterpolate(svc_r4.name);
+    \u0275\u0275advance(2);
+    \u0275\u0275textInterpolate(svc_r4.display_name);
+    \u0275\u0275advance(2);
+    \u0275\u0275property("ngClass", \u0275\u0275pureFunction3(9, _c03, svc_r4.status === "running", svc_r4.status === "stopped", svc_r4.status === "paused"));
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate1(" ", \u0275\u0275pipeBind1(8, 7, svc_r4.status), " ");
+    \u0275\u0275advance(3);
+    \u0275\u0275property("disabled", svc_r4.status === "running" || ctx_r1.processing());
+    \u0275\u0275advance(2);
+    \u0275\u0275property("disabled", svc_r4.status !== "running" || ctx_r1.processing());
+    \u0275\u0275advance(2);
+    \u0275\u0275property("disabled", ctx_r1.processing());
+  }
+}
+function ServiceManagerComponent_Conditional_27_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "tr")(1, "td", 21);
+    \u0275\u0275text(2, "No services found");
+    \u0275\u0275elementEnd()();
+  }
+}
+function ServiceManagerComponent_Conditional_28_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 10);
+    \u0275\u0275text(1, "Loading services...");
+    \u0275\u0275elementEnd();
+  }
+}
+var ServiceManagerComponent = class _ServiceManagerComponent {
+  serviceManager;
+  services = signal([]);
+  loading = signal(false);
+  processing = signal(false);
+  // Global processing lock for actions
+  errorMsg = signal("");
+  // Sorting and Filtering
+  sortColumn = signal("name");
+  sortDirection = signal("asc");
+  filterQuery = signal("");
+  filteredServices = computed(() => {
+    const svcs = this.services();
+    const query = this.filterQuery().toLowerCase();
+    const col = this.sortColumn();
+    const dir = this.sortDirection();
+    let result = svcs;
+    if (query) {
+      result = result.filter((s15) => s15.name.toLowerCase().includes(query) || s15.display_name.toLowerCase().includes(query));
+    }
+    return result.sort((a, b2) => {
+      const valA = a[col];
+      const valB = b2[col];
+      if (valA === valB)
+        return 0;
+      const comparison = valA > valB ? 1 : -1;
+      return dir === "asc" ? comparison : -comparison;
+    });
+  });
+  constructor(serviceManager) {
+    this.serviceManager = serviceManager;
+  }
+  ngOnInit() {
+    this.refresh();
+  }
+  refresh() {
+    this.loading.set(true);
+    this.errorMsg.set("");
+    this.serviceManager.list().subscribe({
+      next: (data) => {
+        this.services.set(data);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        console.error("Failed to load services", err);
+        this.loading.set(false);
+        this.errorMsg.set("Failed to list services. Make sure the backend is running with Administrative privileges (Run as Administrator).");
+      }
+    });
+  }
+  control(name, action) {
+    if (this.processing())
+      return;
+    this.processing.set(true);
+    let obs;
+    if (action === "start")
+      obs = this.serviceManager.start(name);
+    else if (action === "stop")
+      obs = this.serviceManager.stop(name);
+    else
+      obs = this.serviceManager.restart(name);
+    obs.subscribe({
+      next: () => {
+        this.refresh();
+        this.processing.set(false);
+      },
+      error: (err) => {
+        console.error(`Failed to ${action} service`, err);
+        alert(`Failed to ${action} service: ${err.error?.detail || "Unknown error"}`);
+        this.processing.set(false);
+      }
+    });
+  }
+  toggleSort(column) {
+    if (this.sortColumn() === column) {
+      this.sortDirection.set(this.sortDirection() === "asc" ? "desc" : "asc");
+    } else {
+      this.sortColumn.set(column);
+      this.sortDirection.set("asc");
+    }
+  }
+  getSortIcon(column) {
+    if (this.sortColumn() !== column)
+      return "fa-solid fa-sort";
+    return this.sortDirection() === "asc" ? "fa-solid fa-sort-up" : "fa-solid fa-sort-down";
+  }
+  static \u0275fac = function ServiceManagerComponent_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _ServiceManagerComponent)(\u0275\u0275directiveInject(ServiceManagerService));
+  };
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ServiceManagerComponent, selectors: [["app-service-manager"]], decls: 29, vars: 11, consts: [[1, "sm-container"], ["role", "alert", 1, "alert", "alert-warning", "alert-dismissible", "fade", "show", "m-2"], [1, "header"], [1, "d-flex", "align-items-center"], [1, "mb-0", "me-3"], ["type", "text", "placeholder", "Filter services...", 1, "form-control", "form-control-sm", 2, "width", "250px", "background", "rgba(255,255,255,0.1)", "color", "white", "border", "1px solid rgba(255,255,255,0.2)", 3, "ngModelChange", "ngModel"], [1, "btn", "btn-sm", "btn-outline-light", 3, "click", "disabled"], [1, "table-responsive"], [1, "table", "table-dark", "table-striped", "table-hover", "table-sm"], [2, "cursor", "pointer", 3, "click"], [1, "text-center", "mt-2"], [1, "fa-solid", "fa-triangle-exclamation", "me-2"], ["type", "button", "aria-label", "Close", 1, "btn-close", 3, "click"], [1, "badge", 3, "ngClass"], [1, "actions"], ["title", "Start", 1, "btn", "btn-icon", "btn-sm", "text-success", 3, "click", "disabled"], [1, "fa-solid", "fa-play"], ["title", "Stop", 1, "btn", "btn-icon", "btn-sm", "text-danger", 3, "click", "disabled"], [1, "fa-solid", "fa-stop"], ["title", "Restart", 1, "btn", "btn-icon", "btn-sm", "text-warning", 3, "click", "disabled"], [1, "fa-solid", "fa-rotate-right"], ["colspan", "4", 1, "text-center"]], template: function ServiceManagerComponent_Template(rf, ctx) {
+    if (rf & 1) {
+      \u0275\u0275elementStart(0, "div", 0);
+      \u0275\u0275template(1, ServiceManagerComponent_Conditional_1_Template, 4, 1, "div", 1);
+      \u0275\u0275elementStart(2, "div", 2)(3, "div", 3)(4, "h5", 4);
+      \u0275\u0275text(5, "System Services");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(6, "input", 5);
+      \u0275\u0275twoWayListener("ngModelChange", function ServiceManagerComponent_Template_input_ngModelChange_6_listener($event) {
+        \u0275\u0275twoWayBindingSet(ctx.filterQuery, $event) || (ctx.filterQuery = $event);
+        return $event;
+      });
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(7, "button", 6);
+      \u0275\u0275listener("click", function ServiceManagerComponent_Template_button_click_7_listener() {
+        return ctx.refresh();
+      });
+      \u0275\u0275text(8, "Refresh");
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(9, "div", 7)(10, "table", 8)(11, "thead")(12, "tr")(13, "th", 9);
+      \u0275\u0275listener("click", function ServiceManagerComponent_Template_th_click_13_listener() {
+        return ctx.toggleSort("name");
+      });
+      \u0275\u0275text(14, "Name ");
+      \u0275\u0275element(15, "i");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(16, "th", 9);
+      \u0275\u0275listener("click", function ServiceManagerComponent_Template_th_click_16_listener() {
+        return ctx.toggleSort("display_name");
+      });
+      \u0275\u0275text(17, "Display Name ");
+      \u0275\u0275element(18, "i");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(19, "th", 9);
+      \u0275\u0275listener("click", function ServiceManagerComponent_Template_th_click_19_listener() {
+        return ctx.toggleSort("status");
+      });
+      \u0275\u0275text(20, "Status ");
+      \u0275\u0275element(21, "i");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(22, "th");
+      \u0275\u0275text(23, "Actions");
+      \u0275\u0275elementEnd()()();
+      \u0275\u0275elementStart(24, "tbody");
+      \u0275\u0275repeaterCreate(25, ServiceManagerComponent_For_26_Template, 16, 13, "tr", null, _forTrack04);
+      \u0275\u0275template(27, ServiceManagerComponent_Conditional_27_Template, 3, 0, "tr");
+      \u0275\u0275elementEnd()()();
+      \u0275\u0275template(28, ServiceManagerComponent_Conditional_28_Template, 2, 0, "div", 10);
+      \u0275\u0275elementEnd();
+    }
+    if (rf & 2) {
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.errorMsg() ? 1 : -1);
+      \u0275\u0275advance(5);
+      \u0275\u0275twoWayProperty("ngModel", ctx.filterQuery);
+      \u0275\u0275advance();
+      \u0275\u0275property("disabled", ctx.loading());
+      \u0275\u0275advance(8);
+      \u0275\u0275classMap(ctx.getSortIcon("name"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("display_name"));
+      \u0275\u0275advance(3);
+      \u0275\u0275classMap(ctx.getSortIcon("status"));
+      \u0275\u0275advance(4);
+      \u0275\u0275repeater(ctx.filteredServices());
+      \u0275\u0275advance(2);
+      \u0275\u0275conditional(ctx.filteredServices().length === 0 && !ctx.loading() ? 27 : -1);
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.loading() ? 28 : -1);
+    }
+  }, dependencies: [CommonModule, NgClass, TitleCasePipe, HttpClientModule, FormsModule, DefaultValueAccessor, NgControlStatus, NgModel], styles: ["\n\n.sm-container[_ngcontent-%COMP%] {\n  height: 100%;\n  background: #1e1e1e;\n  color: #eee;\n  padding: 10px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n}\n.header[_ngcontent-%COMP%] {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 10px;\n}\n.table-responsive[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n}\ntable[_ngcontent-%COMP%] {\n  margin-bottom: 0;\n}\n.btn-icon[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  padding: 0 5px;\n}\n.btn-icon[_ngcontent-%COMP%]:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n.btn-icon[_ngcontent-%COMP%]:hover:not(:disabled) {\n  transform: scale(1.2);\n}\n.actions[_ngcontent-%COMP%] {\n  white-space: nowrap;\n}\n/*# sourceMappingURL=service-manager.component.css.map */"] });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ServiceManagerComponent, [{
+    type: Component,
+    args: [{ selector: "app-service-manager", standalone: true, imports: [CommonModule, HttpClientModule, FormsModule], template: `
+    <div class="sm-container">
+      @if (errorMsg()) {
+        <div class="alert alert-warning alert-dismissible fade show m-2" role="alert">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i>
+          {{ errorMsg() }}
+          <button type="button" class="btn-close" (click)="errorMsg.set('')" aria-label="Close"></button>
+        </div>
+      }
+      <div class="header">
+        <div class="d-flex align-items-center">
+            <h5 class="mb-0 me-3">System Services</h5>
+            <input type="text" [(ngModel)]="filterQuery" placeholder="Filter services..." class="form-control form-control-sm" style="width: 250px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+        </div>
+        <button class="btn btn-sm btn-outline-light" (click)="refresh()" [disabled]="loading()">Refresh</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover table-sm">
+          <thead>
+            <tr>
+              <th (click)="toggleSort('name')" style="cursor: pointer">Name <i [class]="getSortIcon('name')"></i></th>
+              <th (click)="toggleSort('display_name')" style="cursor: pointer">Display Name <i [class]="getSortIcon('display_name')"></i></th>
+              <th (click)="toggleSort('status')" style="cursor: pointer">Status <i [class]="getSortIcon('status')"></i></th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (svc of filteredServices(); track svc.name) {
+              <tr>
+                <td>{{ svc.name }}</td>
+                <td>{{ svc.display_name }}</td>
+                <td>
+                    <span class="badge" [ngClass]="{'bg-success': svc.status === 'running', 'bg-danger': svc.status === 'stopped', 'bg-warning': svc.status === 'paused'}">
+                        {{ svc.status | titlecase }}
+                    </span>
+                </td>
+                <td class="actions">
+                  <button class="btn btn-icon btn-sm text-success" title="Start" 
+                    (click)="control(svc.name, 'start')" [disabled]="svc.status === 'running' || processing()">
+                    <i class="fa-solid fa-play"></i>
+                  </button>
+                  <button class="btn btn-icon btn-sm text-danger" title="Stop" 
+                    (click)="control(svc.name, 'stop')" [disabled]="svc.status !== 'running' || processing()">
+                    <i class="fa-solid fa-stop"></i>
+                  </button>
+                  <button class="btn btn-icon btn-sm text-warning" title="Restart" 
+                    (click)="control(svc.name, 'restart')" [disabled]="processing()">
+                    <i class="fa-solid fa-rotate-right"></i>
+                  </button>
+                </td>
+              </tr>
+            }
+            @if (filteredServices().length === 0 && !loading()) {
+               <tr><td colspan="4" class="text-center">No services found</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (loading()) {
+        <div class="text-center mt-2">Loading services...</div>
+      }
+    </div>
+  `, styles: ["/* angular:styles/component:css;01c21de10ba883f1d73fbadfa37e53f19bbf4ec377da771d94947ffc73c3312a;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/service-manager/service-manager.component.ts */\n.sm-container {\n  height: 100%;\n  background: #1e1e1e;\n  color: #eee;\n  padding: 10px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n}\n.header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  margin-bottom: 10px;\n}\n.table-responsive {\n  flex: 1;\n  overflow-y: auto;\n}\ntable {\n  margin-bottom: 0;\n}\n.btn-icon {\n  background: transparent;\n  border: none;\n  padding: 0 5px;\n}\n.btn-icon:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n.btn-icon:hover:not(:disabled) {\n  transform: scale(1.2);\n}\n.actions {\n  white-space: nowrap;\n}\n/*# sourceMappingURL=service-manager.component.css.map */\n"] }]
+  }], () => [{ type: ServiceManagerService }], null);
+})();
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ServiceManagerComponent, { className: "ServiceManagerComponent", filePath: "src/app/components/apps/service-manager/service-manager.component.ts", lineNumber: 115 });
 })();
 
 // src/app/components/apps/browser/browser.component.ts
-function BrowserComponent_Conditional_11_Template(rf, ctx) {
+var _forTrack05 = ($index, $item) => $item.url;
+function BrowserComponent_Conditional_15_Conditional_3_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275element(0, "iframe", 10);
-  }
-  if (rf & 2) {
-    const ctx_r0 = \u0275\u0275nextContext();
-    \u0275\u0275property("src", ctx_r0.currentUrlSafe, \u0275\u0275sanitizeResourceUrl);
+    \u0275\u0275elementStart(0, "div", 18);
+    \u0275\u0275text(1, "No bookmarks yet");
+    \u0275\u0275elementEnd();
   }
 }
-function BrowserComponent_Conditional_12_Template(rf, ctx) {
+function BrowserComponent_Conditional_15_For_5_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275elementStart(0, "div", 11);
-    \u0275\u0275element(1, "i", 12);
+    const _r1 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 20);
+    \u0275\u0275listener("click", function BrowserComponent_Conditional_15_For_5_Template_div_click_0_listener() {
+      const bm_r2 = \u0275\u0275restoreView(_r1).$implicit;
+      const ctx_r2 = \u0275\u0275nextContext(2);
+      return \u0275\u0275resetView(ctx_r2.loadBookmark(bm_r2.url));
+    });
+    \u0275\u0275elementStart(1, "div", 21);
+    \u0275\u0275element(2, "i", 22);
+    \u0275\u0275elementStart(3, "span", 23);
+    \u0275\u0275text(4);
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(5, "button", 24);
+    \u0275\u0275listener("click", function BrowserComponent_Conditional_15_For_5_Template_button_click_5_listener($event) {
+      const bm_r2 = \u0275\u0275restoreView(_r1).$implicit;
+      const ctx_r2 = \u0275\u0275nextContext(2);
+      ctx_r2.removeBookmark(bm_r2.url);
+      return \u0275\u0275resetView($event.stopPropagation());
+    });
+    \u0275\u0275element(6, "i", 25);
+    \u0275\u0275elementEnd()();
+  }
+  if (rf & 2) {
+    const bm_r2 = ctx.$implicit;
+    \u0275\u0275advance(4);
+    \u0275\u0275textInterpolate(bm_r2.title);
+  }
+}
+function BrowserComponent_Conditional_15_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 14)(1, "h3");
+    \u0275\u0275text(2, "Bookmarks");
+    \u0275\u0275elementEnd();
+    \u0275\u0275template(3, BrowserComponent_Conditional_15_Conditional_3_Template, 2, 0, "div", 18);
+    \u0275\u0275repeaterCreate(4, BrowserComponent_Conditional_15_For_5_Template, 7, 1, "div", 19, _forTrack05);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const ctx_r2 = \u0275\u0275nextContext();
+    \u0275\u0275advance(3);
+    \u0275\u0275conditional(ctx_r2.bookmarks().length === 0 ? 3 : -1);
+    \u0275\u0275advance();
+    \u0275\u0275repeater(ctx_r2.bookmarks());
+  }
+}
+function BrowserComponent_Conditional_17_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "iframe", 16);
+  }
+  if (rf & 2) {
+    const ctx_r2 = \u0275\u0275nextContext();
+    \u0275\u0275property("src", ctx_r2.currentUrlSafe, \u0275\u0275sanitizeResourceUrl);
+  }
+}
+function BrowserComponent_Conditional_18_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 17);
+    \u0275\u0275element(1, "i", 26);
     \u0275\u0275elementStart(2, "p");
     \u0275\u0275text(3, "Enter a URL to browse.");
     \u0275\u0275elementEnd();
-    \u0275\u0275elementStart(4, "p", 13);
-    \u0275\u0275text(5, "Note: Many sites block iframe embedding (X-Frame-Options).");
-    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(4, "div", 27)(5, "strong");
+    \u0275\u0275element(6, "i", 28);
+    \u0275\u0275text(7, " Limitation");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(8, "p");
+    \u0275\u0275text(9, "Major sites like ");
+    \u0275\u0275elementStart(10, "b");
+    \u0275\u0275text(11, "Google, Skool, Facebook");
+    \u0275\u0275elementEnd();
+    \u0275\u0275text(12, " etc. will NOT work here because they block embedding for security.");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(13, "p");
+    \u0275\u0275text(14, "Try sites like ");
+    \u0275\u0275elementStart(15, "b");
+    \u0275\u0275text(16, "Wikipedia, Bing, or simple static sites");
+    \u0275\u0275elementEnd();
+    \u0275\u0275text(17, ".");
+    \u0275\u0275elementEnd()()();
   }
 }
 var BrowserComponent = class _BrowserComponent {
   sanitizer;
   urlStats = { inputValue: "https://www.wikipedia.org" };
   currentUrlSafe = null;
+  currentUrlGeneric = signal("");
+  bookmarks = signal([]);
+  showBookmarks = signal(false);
   constructor(sanitizer) {
     this.sanitizer = sanitizer;
+    const saved = localStorage.getItem("browserBookmarks");
+    if (saved) {
+      try {
+        this.bookmarks.set(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse bookmarks", e);
+      }
+    }
+    effect(() => {
+      localStorage.setItem("browserBookmarks", JSON.stringify(this.bookmarks()));
+    });
     this.navigate();
   }
+  isCurrentUrlBookmarked = computed(() => {
+    const url = this.currentUrlGeneric();
+    return this.bookmarks().some((bm) => bm.url === url);
+  });
   navigate() {
     let url = this.urlStats.inputValue.trim();
+    if (!url)
+      return;
     if (!url.startsWith("http")) {
       url = "https://" + url;
     }
     this.urlStats.inputValue = url;
+    this.currentUrlGeneric.set(url);
     this.currentUrlSafe = this.sanitizer.bypassSecurityTrustResourceUrl(url);
   }
   refresh() {
@@ -25699,10 +26570,39 @@ var BrowserComponent = class _BrowserComponent {
     this.urlStats.inputValue = "https://www.wikipedia.org";
     this.navigate();
   }
+  toggleBookmark() {
+    const url = this.currentUrlGeneric();
+    if (!url)
+      return;
+    if (this.isCurrentUrlBookmarked()) {
+      this.removeBookmark(url);
+    } else {
+      try {
+        const urlObj = new URL(url);
+        this.addBookmark(url, urlObj.hostname + urlObj.pathname);
+      } catch (e) {
+        this.addBookmark(url, url);
+      }
+    }
+  }
+  addBookmark(url, title) {
+    this.bookmarks.update((current) => [...current, { url, title }]);
+  }
+  removeBookmark(url) {
+    this.bookmarks.update((current) => current.filter((bm) => bm.url !== url));
+  }
+  toggleBookmarksMenu() {
+    this.showBookmarks.update((v2) => !v2);
+  }
+  loadBookmark(url) {
+    this.urlStats.inputValue = url;
+    this.navigate();
+    this.showBookmarks.set(false);
+  }
   static \u0275fac = function BrowserComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _BrowserComponent)(\u0275\u0275directiveInject(DomSanitizer));
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _BrowserComponent, selectors: [["app-browser"]], decls: 13, vars: 2, consts: [[1, "browser-container"], [1, "toolbar"], [1, "nav-btn", 3, "click"], [1, "fa-solid", "fa-rotate-right"], [1, "fa-solid", "fa-house"], [1, "address-bar"], ["type", "text", 3, "ngModelChange", "keydown.enter", "ngModel"], [1, "nav-btn", "menu"], [1, "fa-solid", "fa-ellipsis-vertical"], [1, "content"], ["frameborder", "0", 3, "src"], [1, "placeholder"], [1, "fa-solid", "fa-earth-americas"], [1, "note"]], template: function BrowserComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _BrowserComponent, selectors: [["app-browser"]], decls: 19, vars: 5, consts: [[1, "browser-container"], [1, "toolbar"], [1, "nav-btn", 3, "click"], [1, "fa-solid", "fa-rotate-right"], [1, "fa-solid", "fa-house"], [1, "address-bar"], ["type", "text", 3, "ngModelChange", "keydown.enter", "ngModel"], [1, "bookmark-btn", 3, "click"], [1, "fa-solid", "fa-star"], ["title", "Many modern websites (e.g., Google, Skool, YouTube) block themselves from being viewed in this simple browser (X-Frame-Options).", 1, "info-icon"], [1, "fa-solid", "fa-circle-info"], [1, "menu-container"], [1, "nav-btn", "menu", 3, "click"], [1, "fa-solid", "fa-bookmark"], [1, "bookmarks-dropdown"], [1, "content"], ["frameborder", "0", 3, "src"], [1, "placeholder"], [1, "empty"], [1, "bookmark-item"], [1, "bookmark-item", 3, "click"], [1, "bm-info"], [1, "fa-solid", "fa-globe"], [1, "url"], [1, "delete-btn", 3, "click"], [1, "fa-solid", "fa-trash"], [1, "fa-solid", "fa-earth-americas"], [1, "warning-box"], [1, "fa-solid", "fa-triangle-exclamation"]], template: function BrowserComponent_Template(rf, ctx) {
     if (rf & 1) {
       \u0275\u0275elementStart(0, "div", 0)(1, "div", 1)(2, "button", 2);
       \u0275\u0275listener("click", function BrowserComponent_Template_button_click_2_listener() {
@@ -25724,21 +26624,39 @@ var BrowserComponent = class _BrowserComponent {
       \u0275\u0275listener("keydown.enter", function BrowserComponent_Template_input_keydown_enter_7_listener() {
         return ctx.navigate();
       });
-      \u0275\u0275elementEnd()();
+      \u0275\u0275elementEnd();
       \u0275\u0275elementStart(8, "button", 7);
+      \u0275\u0275listener("click", function BrowserComponent_Template_button_click_8_listener() {
+        return ctx.toggleBookmark();
+      });
       \u0275\u0275element(9, "i", 8);
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(10, "div", 9);
-      \u0275\u0275template(11, BrowserComponent_Conditional_11_Template, 1, 1, "iframe", 10)(12, BrowserComponent_Conditional_12_Template, 6, 0, "div", 11);
+      \u0275\u0275element(11, "i", 10);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(12, "div", 11)(13, "button", 12);
+      \u0275\u0275listener("click", function BrowserComponent_Template_button_click_13_listener() {
+        return ctx.toggleBookmarksMenu();
+      });
+      \u0275\u0275element(14, "i", 13);
+      \u0275\u0275elementEnd();
+      \u0275\u0275template(15, BrowserComponent_Conditional_15_Template, 6, 1, "div", 14);
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(16, "div", 15);
+      \u0275\u0275template(17, BrowserComponent_Conditional_17_Template, 1, 1, "iframe", 16)(18, BrowserComponent_Conditional_18_Template, 18, 0, "div", 17);
       \u0275\u0275elementEnd()();
     }
     if (rf & 2) {
       \u0275\u0275advance(7);
       \u0275\u0275twoWayProperty("ngModel", ctx.urlStats.inputValue);
-      \u0275\u0275advance(4);
-      \u0275\u0275conditional(ctx.currentUrlSafe ? 11 : 12);
+      \u0275\u0275advance();
+      \u0275\u0275classProp("active", ctx.isCurrentUrlBookmarked());
+      \u0275\u0275advance(7);
+      \u0275\u0275conditional(ctx.showBookmarks() ? 15 : -1);
+      \u0275\u0275advance(2);
+      \u0275\u0275conditional(ctx.currentUrlSafe ? 17 : 18);
     }
-  }, dependencies: [CommonModule, FormsModule, DefaultValueAccessor, NgControlStatus, NgModel], styles: ["\n\n.browser-container[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #fff;\n}\n.toolbar[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 8px;\n  padding: 8px;\n  background: #f0f0f0;\n  border-bottom: 1px solid #ccc;\n  align-items: center;\n}\n.toolbar[_ngcontent-%COMP%]   .nav-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #5f6368;\n  padding: 6px;\n  border-radius: 50%;\n  cursor: pointer;\n  width: 32px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.toolbar[_ngcontent-%COMP%]   .nav-btn[_ngcontent-%COMP%]:hover {\n  background: #e0e0e0;\n  color: #000;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%] {\n  flex: 1;\n  background: #fff;\n  border: 1px solid #ccc;\n  border-radius: 20px;\n  padding: 0 15px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%]   input[_ngcontent-%COMP%] {\n  width: 100%;\n  border: none;\n  outline: none;\n  font-size: 0.9rem;\n  color: #333;\n}\n.content[_ngcontent-%COMP%] {\n  flex: 1;\n  position: relative;\n  background: #fff;\n}\n.content[_ngcontent-%COMP%]   iframe[_ngcontent-%COMP%] {\n  width: 100%;\n  height: 100%;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  color: #ccc;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 4rem;\n  margin-bottom: 20px;\n  color: #e0e0e0;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  font-size: 1.2rem;\n  color: #888;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   .note[_ngcontent-%COMP%] {\n  font-size: 0.8rem;\n  color: #aaa;\n  margin-top: 10px;\n}\n/*# sourceMappingURL=browser.component.css.map */"] });
+  }, dependencies: [CommonModule, FormsModule, DefaultValueAccessor, NgControlStatus, NgModel], styles: ["\n\n.browser-container[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #fff;\n}\n.toolbar[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 8px;\n  padding: 8px;\n  background: #f0f0f0;\n  border-bottom: 1px solid #ccc;\n  align-items: center;\n  position: relative;\n}\n.toolbar[_ngcontent-%COMP%]   .nav-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #5f6368;\n  padding: 6px;\n  border-radius: 50%;\n  cursor: pointer;\n  width: 32px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.toolbar[_ngcontent-%COMP%]   .nav-btn[_ngcontent-%COMP%]:hover {\n  background: #e0e0e0;\n  color: #000;\n}\n.toolbar[_ngcontent-%COMP%]   .nav-btn.menu[_ngcontent-%COMP%] {\n  margin-left: auto;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%] {\n  flex: 1;\n  background: #fff;\n  border: 1px solid #ccc;\n  border-radius: 20px;\n  padding: 0 10px 0 15px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%]   input[_ngcontent-%COMP%] {\n  flex: 1;\n  border: none;\n  outline: none;\n  font-size: 0.9rem;\n  color: #333;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%]   .bookmark-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 4px;\n  border-radius: 50%;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%]   .bookmark-btn[_ngcontent-%COMP%]:hover {\n  color: #aaa;\n  background: #f5f5f5;\n}\n.toolbar[_ngcontent-%COMP%]   .address-bar[_ngcontent-%COMP%]   .bookmark-btn.active[_ngcontent-%COMP%] {\n  color: #fbbc04;\n}\n.toolbar[_ngcontent-%COMP%]   .info-icon[_ngcontent-%COMP%] {\n  color: #888;\n  cursor: help;\n  padding: 0 5px;\n}\n.toolbar[_ngcontent-%COMP%]   .info-icon[_ngcontent-%COMP%]:hover {\n  color: #555;\n}\n.toolbar[_ngcontent-%COMP%]   .menu-container[_ngcontent-%COMP%] {\n  position: relative;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%] {\n  position: absolute;\n  top: 100%;\n  right: 0;\n  margin-top: 5px;\n  background: white;\n  border: 1px solid #ccc;\n  border-radius: 4px;\n  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n  width: 300px;\n  z-index: 100;\n  max-height: 400px;\n  overflow-y: auto;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%] {\n  padding: 10px;\n  margin: 0;\n  border-bottom: 1px solid #eee;\n  font-size: 1rem;\n  color: #333;\n  background: #f9f9f9;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .empty[_ngcontent-%COMP%] {\n  padding: 20px;\n  text-align: center;\n  color: #888;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 8px 10px;\n  cursor: pointer;\n  border-bottom: 1px solid #f0f0f0;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]:hover {\n  background: #f5f5f5;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]   .bm-info[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  overflow: hidden;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]   .bm-info[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  color: #5f6368;\n  font-size: 0.9em;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]   .bm-info[_ngcontent-%COMP%]   .url[_ngcontent-%COMP%] {\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-size: 0.9em;\n  color: #333;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]   .delete-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #999;\n  cursor: pointer;\n  padding: 4px;\n  opacity: 0;\n  transition: opacity 0.2s;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]   .delete-btn[_ngcontent-%COMP%]:hover {\n  color: #d93025;\n}\n.toolbar[_ngcontent-%COMP%]   .bookmarks-dropdown[_ngcontent-%COMP%]   .bookmark-item[_ngcontent-%COMP%]:hover   .delete-btn[_ngcontent-%COMP%] {\n  opacity: 1;\n}\n.content[_ngcontent-%COMP%] {\n  flex: 1;\n  position: relative;\n  background: #fff;\n}\n.content[_ngcontent-%COMP%]   iframe[_ngcontent-%COMP%] {\n  width: 100%;\n  height: 100%;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  color: #ccc;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   i.fa-earth-americas[_ngcontent-%COMP%] {\n  font-size: 4rem;\n  margin-bottom: 20px;\n  color: #e0e0e0;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  font-size: 1.2rem;\n  color: #888;\n  margin: 0 0 20px 0;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   .warning-box[_ngcontent-%COMP%] {\n  background: #fff3cd;\n  color: #856404;\n  border: 1px solid #ffeeba;\n  padding: 15px;\n  border-radius: 6px;\n  max-width: 80%;\n  text-align: center;\n  font-size: 0.9rem;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   .warning-box[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%] {\n  display: block;\n  margin-bottom: 8px;\n  font-size: 1rem;\n}\n.content[_ngcontent-%COMP%]   .placeholder[_ngcontent-%COMP%]   .warning-box[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n  color: #856404;\n  margin: 5px 0;\n}\n/*# sourceMappingURL=browser.component.css.map */"] });
 };
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(BrowserComponent, [{
@@ -25748,10 +26666,40 @@ var BrowserComponent = class _BrowserComponent {
       <div class="toolbar">
         <button class="nav-btn" (click)="refresh()"><i class="fa-solid fa-rotate-right"></i></button>
         <button class="nav-btn" (click)="goHome()"><i class="fa-solid fa-house"></i></button>
+        
         <div class="address-bar">
           <input type="text" [(ngModel)]="urlStats.inputValue" (keydown.enter)="navigate()">
+          <button class="bookmark-btn" (click)="toggleBookmark()" [class.active]="isCurrentUrlBookmarked()">
+            <i class="fa-solid fa-star"></i>
+          </button>
         </div>
-        <button class="nav-btn menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        
+        <div class="info-icon" title="Many modern websites (e.g., Google, Skool, YouTube) block themselves from being viewed in this simple browser (X-Frame-Options).">
+            <i class="fa-solid fa-circle-info"></i>
+        </div>
+        
+        <div class="menu-container">
+            <button class="nav-btn menu" (click)="toggleBookmarksMenu()"><i class="fa-solid fa-bookmark"></i></button>
+            @if (showBookmarks()) {
+                <div class="bookmarks-dropdown">
+                    <h3>Bookmarks</h3>
+                    @if (bookmarks().length === 0) {
+                        <div class="empty">No bookmarks yet</div>
+                    }
+                    @for (bm of bookmarks(); track bm.url) {
+                        <div class="bookmark-item" (click)="loadBookmark(bm.url)">
+                            <div class="bm-info">
+                                <i class="fa-solid fa-globe"></i>
+                                <span class="url">{{bm.title}}</span>
+                            </div>
+                            <button class="delete-btn" (click)="removeBookmark(bm.url); $event.stopPropagation()">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
       </div>
       
       <div class="content">
@@ -25761,16 +26709,20 @@ var BrowserComponent = class _BrowserComponent {
           <div class="placeholder">
             <i class="fa-solid fa-earth-americas"></i>
             <p>Enter a URL to browse.</p>
-            <p class="note">Note: Many sites block iframe embedding (X-Frame-Options).</p>
+            <div class="warning-box">
+                <strong><i class="fa-solid fa-triangle-exclamation"></i> Limitation</strong>
+                <p>Major sites like <b>Google, Skool, Facebook</b> etc. will NOT work here because they block embedding for security.</p>
+                <p>Try sites like <b>Wikipedia, Bing, or simple static sites</b>.</p>
+            </div>
           </div>
         }
       </div>
     </div>
-  `, styles: ["/* angular:styles/component:css;157df9c24685dc058ad830cba09403091687649dcf0c437938ec670010c37808;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/browser/browser.component.ts */\n.browser-container {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #fff;\n}\n.toolbar {\n  display: flex;\n  gap: 8px;\n  padding: 8px;\n  background: #f0f0f0;\n  border-bottom: 1px solid #ccc;\n  align-items: center;\n}\n.toolbar .nav-btn {\n  background: transparent;\n  border: none;\n  color: #5f6368;\n  padding: 6px;\n  border-radius: 50%;\n  cursor: pointer;\n  width: 32px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.toolbar .nav-btn:hover {\n  background: #e0e0e0;\n  color: #000;\n}\n.toolbar .address-bar {\n  flex: 1;\n  background: #fff;\n  border: 1px solid #ccc;\n  border-radius: 20px;\n  padding: 0 15px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n}\n.toolbar .address-bar input {\n  width: 100%;\n  border: none;\n  outline: none;\n  font-size: 0.9rem;\n  color: #333;\n}\n.content {\n  flex: 1;\n  position: relative;\n  background: #fff;\n}\n.content iframe {\n  width: 100%;\n  height: 100%;\n}\n.content .placeholder {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  color: #ccc;\n}\n.content .placeholder i {\n  font-size: 4rem;\n  margin-bottom: 20px;\n  color: #e0e0e0;\n}\n.content .placeholder p {\n  font-size: 1.2rem;\n  color: #888;\n}\n.content .placeholder .note {\n  font-size: 0.8rem;\n  color: #aaa;\n  margin-top: 10px;\n}\n/*# sourceMappingURL=browser.component.css.map */\n"] }]
+  `, styles: ["/* angular:styles/component:css;f15703413a87ffb2f6c8b4a59d73d99ca8dff9e6e725a1d345bac868629d9bf7;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/browser/browser.component.ts */\n.browser-container {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #fff;\n}\n.toolbar {\n  display: flex;\n  gap: 8px;\n  padding: 8px;\n  background: #f0f0f0;\n  border-bottom: 1px solid #ccc;\n  align-items: center;\n  position: relative;\n}\n.toolbar .nav-btn {\n  background: transparent;\n  border: none;\n  color: #5f6368;\n  padding: 6px;\n  border-radius: 50%;\n  cursor: pointer;\n  width: 32px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.toolbar .nav-btn:hover {\n  background: #e0e0e0;\n  color: #000;\n}\n.toolbar .nav-btn.menu {\n  margin-left: auto;\n}\n.toolbar .address-bar {\n  flex: 1;\n  background: #fff;\n  border: 1px solid #ccc;\n  border-radius: 20px;\n  padding: 0 10px 0 15px;\n  height: 32px;\n  display: flex;\n  align-items: center;\n}\n.toolbar .address-bar input {\n  flex: 1;\n  border: none;\n  outline: none;\n  font-size: 0.9rem;\n  color: #333;\n}\n.toolbar .address-bar .bookmark-btn {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 4px;\n  border-radius: 50%;\n}\n.toolbar .address-bar .bookmark-btn:hover {\n  color: #aaa;\n  background: #f5f5f5;\n}\n.toolbar .address-bar .bookmark-btn.active {\n  color: #fbbc04;\n}\n.toolbar .info-icon {\n  color: #888;\n  cursor: help;\n  padding: 0 5px;\n}\n.toolbar .info-icon:hover {\n  color: #555;\n}\n.toolbar .menu-container {\n  position: relative;\n}\n.toolbar .bookmarks-dropdown {\n  position: absolute;\n  top: 100%;\n  right: 0;\n  margin-top: 5px;\n  background: white;\n  border: 1px solid #ccc;\n  border-radius: 4px;\n  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n  width: 300px;\n  z-index: 100;\n  max-height: 400px;\n  overflow-y: auto;\n}\n.toolbar .bookmarks-dropdown h3 {\n  padding: 10px;\n  margin: 0;\n  border-bottom: 1px solid #eee;\n  font-size: 1rem;\n  color: #333;\n  background: #f9f9f9;\n}\n.toolbar .bookmarks-dropdown .empty {\n  padding: 20px;\n  text-align: center;\n  color: #888;\n}\n.toolbar .bookmarks-dropdown .bookmark-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 8px 10px;\n  cursor: pointer;\n  border-bottom: 1px solid #f0f0f0;\n}\n.toolbar .bookmarks-dropdown .bookmark-item:hover {\n  background: #f5f5f5;\n}\n.toolbar .bookmarks-dropdown .bookmark-item .bm-info {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  overflow: hidden;\n}\n.toolbar .bookmarks-dropdown .bookmark-item .bm-info i {\n  color: #5f6368;\n  font-size: 0.9em;\n}\n.toolbar .bookmarks-dropdown .bookmark-item .bm-info .url {\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  font-size: 0.9em;\n  color: #333;\n}\n.toolbar .bookmarks-dropdown .bookmark-item .delete-btn {\n  background: transparent;\n  border: none;\n  color: #999;\n  cursor: pointer;\n  padding: 4px;\n  opacity: 0;\n  transition: opacity 0.2s;\n}\n.toolbar .bookmarks-dropdown .bookmark-item .delete-btn:hover {\n  color: #d93025;\n}\n.toolbar .bookmarks-dropdown .bookmark-item:hover .delete-btn {\n  opacity: 1;\n}\n.content {\n  flex: 1;\n  position: relative;\n  background: #fff;\n}\n.content iframe {\n  width: 100%;\n  height: 100%;\n}\n.content .placeholder {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  color: #ccc;\n}\n.content .placeholder i.fa-earth-americas {\n  font-size: 4rem;\n  margin-bottom: 20px;\n  color: #e0e0e0;\n}\n.content .placeholder p {\n  font-size: 1.2rem;\n  color: #888;\n  margin: 0 0 20px 0;\n}\n.content .placeholder .warning-box {\n  background: #fff3cd;\n  color: #856404;\n  border: 1px solid #ffeeba;\n  padding: 15px;\n  border-radius: 6px;\n  max-width: 80%;\n  text-align: center;\n  font-size: 0.9rem;\n}\n.content .placeholder .warning-box strong {\n  display: block;\n  margin-bottom: 8px;\n  font-size: 1rem;\n}\n.content .placeholder .warning-box p {\n  font-size: 0.9rem;\n  color: #856404;\n  margin: 5px 0;\n}\n/*# sourceMappingURL=browser.component.css.map */\n"] }]
   }], () => [{ type: DomSanitizer }], null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(BrowserComponent, { className: "BrowserComponent", filePath: "src/app/components/apps/browser/browser.component.ts", lineNumber: 110 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(BrowserComponent, { className: "BrowserComponent", filePath: "src/app/components/apps/browser/browser.component.ts", lineNumber: 248 });
 })();
 
 // src/app/components/apps/calculator/calculator.component.ts
@@ -26014,6 +26966,300 @@ var CalculatorComponent = class _CalculatorComponent {
   (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(CalculatorComponent, { className: "CalculatorComponent", filePath: "src/app/components/apps/calculator/calculator.component.ts", lineNumber: 95 });
 })();
 
+// src/app/services/file-transfer.service.ts
+var FileTransferService = class _FileTransferService {
+  http = inject(HttpClient);
+  apiUrl = "http://localhost:8000/api/file-transfer";
+  // Should ideally use environment variable, but hardcoding for consistency with other services if they do so.
+  // Checking other services, they usually construct URL. Assuming localhost:8000 based on previous context.
+  constructor() {
+  }
+  uploadFile(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return this.http.post(`${this.apiUrl}/upload`, formData);
+  }
+  getFiles(type) {
+    return this.http.get(`${this.apiUrl}/files/${type}`);
+  }
+  deleteFile(type, filename) {
+    return this.http.delete(`${this.apiUrl}/files/${type}/${filename}`);
+  }
+  getDownloadUrl(filename) {
+    return `${this.apiUrl}/download/${filename}`;
+  }
+  static \u0275fac = function FileTransferService_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _FileTransferService)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({ token: _FileTransferService, factory: _FileTransferService.\u0275fac, providedIn: "root" });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(FileTransferService, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], () => [], null);
+})();
+
+// src/app/components/apps/file-transfer/file-transfer.component.ts
+function FileTransferComponent_li_15_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r3 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "li")(1, "span", 13);
+    \u0275\u0275text(2);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "button", 14);
+    \u0275\u0275listener("click", function FileTransferComponent_li_15_Template_button_click_3_listener() {
+      const file_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.deleteFile("upload", file_r4));
+    });
+    \u0275\u0275element(4, "i", 15);
+    \u0275\u0275elementEnd()();
+  }
+  if (rf & 2) {
+    const file_r4 = ctx.$implicit;
+    \u0275\u0275advance();
+    \u0275\u0275propertyInterpolate("title", file_r4);
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate(file_r4);
+  }
+}
+function FileTransferComponent_li_16_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "li", 16);
+    \u0275\u0275text(1, "No uploaded files yet.");
+    \u0275\u0275elementEnd();
+  }
+}
+function FileTransferComponent_li_25_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r6 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "li")(1, "span", 13);
+    \u0275\u0275text(2);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "div", 17)(4, "a", 18);
+    \u0275\u0275element(5, "i", 19);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(6, "button", 14);
+    \u0275\u0275listener("click", function FileTransferComponent_li_25_Template_button_click_6_listener() {
+      const file_r7 = \u0275\u0275restoreView(_r6).$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.deleteFile("download", file_r7));
+    });
+    \u0275\u0275element(7, "i", 15);
+    \u0275\u0275elementEnd()()();
+  }
+  if (rf & 2) {
+    const file_r7 = ctx.$implicit;
+    const ctx_r4 = \u0275\u0275nextContext();
+    \u0275\u0275advance();
+    \u0275\u0275propertyInterpolate("title", file_r7);
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate(file_r7);
+    \u0275\u0275advance(2);
+    \u0275\u0275property("href", ctx_r4.getDownloadLink(file_r7), \u0275\u0275sanitizeUrl);
+  }
+}
+function FileTransferComponent_li_26_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "li", 16);
+    \u0275\u0275text(1, "No files available for download.");
+    \u0275\u0275elementEnd();
+  }
+}
+var FileTransferComponent = class _FileTransferComponent {
+  fileTransferService = inject(FileTransferService);
+  uploadedFiles = [];
+  downloadFiles = [];
+  ngOnInit() {
+    this.refreshLists();
+  }
+  refreshLists() {
+    this.fileTransferService.getFiles("upload").subscribe({
+      next: (files) => this.uploadedFiles = files,
+      error: (err) => console.error("Error fetching uploaded files:", err)
+    });
+    this.fileTransferService.getFiles("download").subscribe({
+      next: (files) => this.downloadFiles = files,
+      error: (err) => console.error("Error fetching download files:", err)
+    });
+  }
+  getDownloadLink(filename) {
+    return this.fileTransferService.getDownloadUrl(filename);
+  }
+  onFileSelected(event) {
+    const file = event.target.files[0];
+    if (file) {
+      this.uploadFile(file);
+    }
+  }
+  onDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.add("drag-over");
+  }
+  onDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove("drag-over");
+  }
+  onDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove("drag-over");
+    if (event.dataTransfer?.files.length) {
+      this.uploadFile(event.dataTransfer.files[0]);
+    }
+  }
+  uploadFile(file) {
+    this.fileTransferService.uploadFile(file).subscribe({
+      next: () => {
+        this.refreshLists();
+      },
+      error: (err) => console.error("Upload failed:", err)
+    });
+  }
+  deleteFile(type, filename) {
+    if (confirm(`Are you sure you want to delete ${filename}?`)) {
+      this.fileTransferService.deleteFile(type, filename).subscribe({
+        next: () => this.refreshLists(),
+        error: (err) => console.error("Delete failed:", err)
+      });
+    }
+  }
+  static \u0275fac = function FileTransferComponent_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _FileTransferComponent)();
+  };
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _FileTransferComponent, selectors: [["app-file-transfer"]], decls: 27, vars: 6, consts: [["fileInput", ""], [1, "file-transfer-container"], [1, "panel", "upload-panel"], [1, "fa-solid", "fa-cloud-arrow-up"], [1, "drop-zone", 3, "dragover", "dragleave", "drop", "click"], [1, "fa-solid", "fa-file-import"], ["type", "file", "hidden", "", 3, "change"], [1, "file-list"], [4, "ngFor", "ngForOf"], ["class", "empty-state", 4, "ngIf"], [1, "panel", "download-panel"], [1, "fa-solid", "fa-cloud-arrow-down"], [1, "file-list", "full-height"], [1, "filename", 3, "title"], ["title", "Delete", 1, "action-btn", "delete-btn", 3, "click"], [1, "fa-solid", "fa-trash"], [1, "empty-state"], [1, "actions"], ["target", "_blank", "title", "Download", 1, "action-btn", "download-btn", 3, "href"], [1, "fa-solid", "fa-download"]], template: function FileTransferComponent_Template(rf, ctx) {
+    if (rf & 1) {
+      const _r1 = \u0275\u0275getCurrentView();
+      \u0275\u0275elementStart(0, "div", 1)(1, "div", 2)(2, "h3");
+      \u0275\u0275element(3, "i", 3);
+      \u0275\u0275text(4, " Upload to Container");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(5, "div", 4);
+      \u0275\u0275listener("dragover", function FileTransferComponent_Template_div_dragover_5_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onDragOver($event));
+      })("dragleave", function FileTransferComponent_Template_div_dragleave_5_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onDragLeave($event));
+      })("drop", function FileTransferComponent_Template_div_drop_5_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onDrop($event));
+      })("click", function FileTransferComponent_Template_div_click_5_listener() {
+        \u0275\u0275restoreView(_r1);
+        const fileInput_r2 = \u0275\u0275reference(10);
+        return \u0275\u0275resetView(fileInput_r2.click());
+      });
+      \u0275\u0275element(6, "i", 5);
+      \u0275\u0275elementStart(7, "p");
+      \u0275\u0275text(8, "Click or Drag files here to upload");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(9, "input", 6, 0);
+      \u0275\u0275listener("change", function FileTransferComponent_Template_input_change_9_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onFileSelected($event));
+      });
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(11, "div", 7)(12, "h4");
+      \u0275\u0275text(13);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(14, "ul");
+      \u0275\u0275template(15, FileTransferComponent_li_15_Template, 5, 2, "li", 8)(16, FileTransferComponent_li_16_Template, 2, 0, "li", 9);
+      \u0275\u0275elementEnd()()();
+      \u0275\u0275elementStart(17, "div", 10)(18, "h3");
+      \u0275\u0275element(19, "i", 11);
+      \u0275\u0275text(20, " Download from Container");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(21, "div", 12)(22, "h4");
+      \u0275\u0275text(23);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(24, "ul");
+      \u0275\u0275template(25, FileTransferComponent_li_25_Template, 8, 3, "li", 8)(26, FileTransferComponent_li_26_Template, 2, 0, "li", 9);
+      \u0275\u0275elementEnd()()()();
+    }
+    if (rf & 2) {
+      \u0275\u0275advance(13);
+      \u0275\u0275textInterpolate1("Uploaded Files (", ctx.uploadedFiles.length, ")");
+      \u0275\u0275advance(2);
+      \u0275\u0275property("ngForOf", ctx.uploadedFiles);
+      \u0275\u0275advance();
+      \u0275\u0275property("ngIf", ctx.uploadedFiles.length === 0);
+      \u0275\u0275advance(7);
+      \u0275\u0275textInterpolate1("Available Downloads (", ctx.downloadFiles.length, ")");
+      \u0275\u0275advance(2);
+      \u0275\u0275property("ngForOf", ctx.downloadFiles);
+      \u0275\u0275advance();
+      \u0275\u0275property("ngIf", ctx.downloadFiles.length === 0);
+    }
+  }, dependencies: [CommonModule, NgForOf, NgIf], styles: ['\n\n.file-transfer-container[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 20px;\n  height: 100%;\n  padding: 15px;\n  box-sizing: border-box;\n  background: #1e1e1e;\n  color: white;\n  font-family: "Segoe UI", sans-serif;\n}\n.panel[_ngcontent-%COMP%] {\n  flex: 1;\n  background: #252526;\n  border-radius: 8px;\n  padding: 15px;\n  display: flex;\n  flex-direction: column;\n  border: 1px solid #333;\n}\nh3[_ngcontent-%COMP%] {\n  margin: 0 0 15px 0;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  font-size: 1.1rem;\n  border-bottom: 1px solid #333;\n  padding-bottom: 10px;\n  color: #ccc;\n}\nh4[_ngcontent-%COMP%] {\n  margin: 10px 0;\n  font-size: 0.9rem;\n  color: #888;\n}\n.drop-zone[_ngcontent-%COMP%] {\n  border: 2px dashed #444;\n  border-radius: 8px;\n  padding: 20px;\n  text-align: center;\n  cursor: pointer;\n  transition: all 0.2s;\n  margin-bottom: 15px;\n}\n.drop-zone[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-size: 2rem;\n  color: #555;\n  margin-bottom: 10px;\n}\n.drop-zone[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  color: #888;\n}\n.drop-zone[_ngcontent-%COMP%]:hover, \n.drop-zone.drag-over[_ngcontent-%COMP%] {\n  border-color: #0078d4;\n  background: rgba(0, 120, 212, 0.1);\n}\n:is(.drop-zone[_ngcontent-%COMP%]:hover, .drop-zone.drag-over[_ngcontent-%COMP%])   i[_ngcontent-%COMP%] {\n  color: #0078d4;\n}\n:is(.drop-zone[_ngcontent-%COMP%]:hover, .drop-zone.drag-over[_ngcontent-%COMP%])   p[_ngcontent-%COMP%] {\n  color: #ccc;\n}\n.file-list[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n}\n.file-list.full-height[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n}\n.file-list[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%] {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 8px 10px;\n  border-bottom: 1px solid #333;\n  transition: background 0.1s;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]:hover {\n  background: #2a2d2e;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .filename[_ngcontent-%COMP%] {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  margin-right: 10px;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .actions[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .action-btn[_ngcontent-%COMP%] {\n  background: none;\n  border: none;\n  color: #aaa;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  transition: all 0.2s;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .action-btn[_ngcontent-%COMP%]:hover {\n  background: #3c3c3c;\n  color: white;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .action-btn.download-btn[_ngcontent-%COMP%]:hover {\n  color: #4CAF50;\n}\n.file-list[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   .action-btn.delete-btn[_ngcontent-%COMP%]:hover {\n  color: #f44336;\n}\n.file-list[_ngcontent-%COMP%]   .empty-state[_ngcontent-%COMP%] {\n  text-align: center;\n  color: #555;\n  padding: 20px;\n}\n/*# sourceMappingURL=file-transfer.component.css.map */'] });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(FileTransferComponent, [{
+    type: Component,
+    args: [{ selector: "app-file-transfer", standalone: true, imports: [CommonModule], template: `
+    <div class="file-transfer-container">
+      <!-- Upload Section -->
+      <div class="panel upload-panel">
+        <h3><i class="fa-solid fa-cloud-arrow-up"></i> Upload to Container</h3>
+        
+        <div class="drop-zone" 
+             (dragover)="onDragOver($event)" 
+             (dragleave)="onDragLeave($event)" 
+             (drop)="onDrop($event)"
+             (click)="fileInput.click()">
+          <i class="fa-solid fa-file-import"></i>
+          <p>Click or Drag files here to upload</p>
+          <input #fileInput type="file" (change)="onFileSelected($event)" hidden>
+        </div>
+
+        <div class="file-list">
+          <h4>Uploaded Files ({{uploadedFiles.length}})</h4>
+          <ul>
+            <li *ngFor="let file of uploadedFiles">
+              <span class="filename" title="{{file}}">{{file}}</span>
+              <button class="action-btn delete-btn" (click)="deleteFile('upload', file)" title="Delete">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </li>
+            <li *ngIf="uploadedFiles.length === 0" class="empty-state">No uploaded files yet.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Download Section -->
+      <div class="panel download-panel">
+        <h3><i class="fa-solid fa-cloud-arrow-down"></i> Download from Container</h3>
+        
+        <div class="file-list full-height">
+          <h4>Available Downloads ({{downloadFiles.length}})</h4>
+          <ul>
+            <li *ngFor="let file of downloadFiles">
+              <span class="filename" title="{{file}}">{{file}}</span>
+              <div class="actions">
+                <a [href]="getDownloadLink(file)" target="_blank" class="action-btn download-btn" title="Download">
+                  <i class="fa-solid fa-download"></i>
+                </a>
+                <button class="action-btn delete-btn" (click)="deleteFile('download', file)" title="Delete">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </li>
+            <li *ngIf="downloadFiles.length === 0" class="empty-state">No files available for download.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  `, styles: ['/* angular:styles/component:css;7ff3bef95080be9917edc48c635eab8b5c590c5561fb3e3bc992b2f2f60abab2;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/file-transfer/file-transfer.component.ts */\n.file-transfer-container {\n  display: flex;\n  gap: 20px;\n  height: 100%;\n  padding: 15px;\n  box-sizing: border-box;\n  background: #1e1e1e;\n  color: white;\n  font-family: "Segoe UI", sans-serif;\n}\n.panel {\n  flex: 1;\n  background: #252526;\n  border-radius: 8px;\n  padding: 15px;\n  display: flex;\n  flex-direction: column;\n  border: 1px solid #333;\n}\nh3 {\n  margin: 0 0 15px 0;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  font-size: 1.1rem;\n  border-bottom: 1px solid #333;\n  padding-bottom: 10px;\n  color: #ccc;\n}\nh4 {\n  margin: 10px 0;\n  font-size: 0.9rem;\n  color: #888;\n}\n.drop-zone {\n  border: 2px dashed #444;\n  border-radius: 8px;\n  padding: 20px;\n  text-align: center;\n  cursor: pointer;\n  transition: all 0.2s;\n  margin-bottom: 15px;\n}\n.drop-zone i {\n  font-size: 2rem;\n  color: #555;\n  margin-bottom: 10px;\n}\n.drop-zone p {\n  margin: 0;\n  color: #888;\n}\n.drop-zone:hover,\n.drop-zone.drag-over {\n  border-color: #0078d4;\n  background: rgba(0, 120, 212, 0.1);\n}\n:is(.drop-zone:hover, .drop-zone.drag-over) i {\n  color: #0078d4;\n}\n:is(.drop-zone:hover, .drop-zone.drag-over) p {\n  color: #ccc;\n}\n.file-list {\n  flex: 1;\n  overflow-y: auto;\n}\n.file-list.full-height {\n  display: flex;\n  flex-direction: column;\n}\n.file-list ul {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n}\n.file-list li {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 8px 10px;\n  border-bottom: 1px solid #333;\n  transition: background 0.1s;\n}\n.file-list li:hover {\n  background: #2a2d2e;\n}\n.file-list li .filename {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  margin-right: 10px;\n}\n.file-list li .actions {\n  display: flex;\n  gap: 5px;\n}\n.file-list li .action-btn {\n  background: none;\n  border: none;\n  color: #aaa;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  transition: all 0.2s;\n}\n.file-list li .action-btn:hover {\n  background: #3c3c3c;\n  color: white;\n}\n.file-list li .action-btn.download-btn:hover {\n  color: #4CAF50;\n}\n.file-list li .action-btn.delete-btn:hover {\n  color: #f44336;\n}\n.file-list .empty-state {\n  text-align: center;\n  color: #555;\n  padding: 20px;\n}\n/*# sourceMappingURL=file-transfer.component.css.map */\n'] }]
+  }], null, null);
+})();
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(FileTransferComponent, { className: "FileTransferComponent", filePath: "src/app/components/apps/file-transfer/file-transfer.component.ts", lineNumber: 191 });
+})();
+
 // src/app/components/os/start-menu/start-menu.component.ts
 var StartMenuComponent = class _StartMenuComponent {
   wm = inject(WindowManagerService);
@@ -26021,9 +27267,11 @@ var StartMenuComponent = class _StartMenuComponent {
   feComp = FileExplorerComponent;
   termComp = TerminalComponent;
   pmComp = ProcessManagerComponent;
+  smComp = ServiceManagerComponent;
   txtComp = TextEditorComponent;
   brwComp = BrowserComponent;
   calcComp = CalculatorComponent;
+  ftComp = FileTransferComponent;
   close() {
     this.wm.toggleStartMenu();
   }
@@ -26034,7 +27282,7 @@ var StartMenuComponent = class _StartMenuComponent {
   static \u0275fac = function StartMenuComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _StartMenuComponent)();
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _StartMenuComponent, selectors: [["app-start-menu"]], decls: 36, vars: 0, consts: [[1, "start-menu-overlay", 3, "click"], [1, "app-grid", 3, "click"], [1, "search-bar"], [1, "fa-solid", "fa-search"], ["type", "text", "placeholder", "Type to search...", "autofocus", ""], [1, "apps-container"], [1, "app-item", 3, "click"], [1, "icon-box"], [1, "fa-solid", "fa-folder-open"], [1, "fa-solid", "fa-terminal"], [1, "fa-solid", "fa-chart-line"], [1, "fa-solid", "fa-file-lines"], [1, "fa-brands", "fa-firefox-browser"], [1, "fa-solid", "fa-calculator"]], template: function StartMenuComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _StartMenuComponent, selectors: [["app-start-menu"]], decls: 46, vars: 0, consts: [[1, "start-menu-overlay", 3, "click"], [1, "app-grid", 3, "click"], [1, "search-bar"], [1, "fa-solid", "fa-search"], ["type", "text", "placeholder", "Type to search...", "autofocus", ""], [1, "apps-container"], [1, "app-item", 3, "click"], [1, "icon-box"], [1, "fa-solid", "fa-folder-open"], [1, "fa-solid", "fa-terminal"], [1, "fa-solid", "fa-chart-line"], [1, "fa-solid", "fa-server"], [1, "fa-solid", "fa-file-lines"], [1, "fa-brands", "fa-firefox-browser"], [1, "fa-solid", "fa-calculator"], [1, "fa-solid", "fa-right-left"]], template: function StartMenuComponent_Template(rf, ctx) {
     if (rf & 1) {
       \u0275\u0275elementStart(0, "div", 0);
       \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_0_listener() {
@@ -26069,7 +27317,7 @@ var StartMenuComponent = class _StartMenuComponent {
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(16, "div", 6);
       \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_16_listener() {
-        return ctx.launch("process-manager", ctx.pmComp, "Task Manager", "fa-solid fa-chart-line");
+        return ctx.launch("process-manager", ctx.pmComp, "Process Manager", "fa-solid fa-chart-line");
       });
       \u0275\u0275elementStart(17, "div", 7);
       \u0275\u0275element(18, "i", 10);
@@ -26079,33 +27327,53 @@ var StartMenuComponent = class _StartMenuComponent {
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(21, "div", 6);
       \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_21_listener() {
-        return ctx.launch("text-editor", ctx.txtComp, "Text Editor", "fa-solid fa-file-lines");
+        return ctx.launch("service-manager", ctx.smComp, "Service Manager", "fa-solid fa-server");
       });
       \u0275\u0275elementStart(22, "div", 7);
       \u0275\u0275element(23, "i", 11);
       \u0275\u0275elementEnd();
       \u0275\u0275elementStart(24, "span");
-      \u0275\u0275text(25, "Text Editor");
+      \u0275\u0275text(25, "Services");
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(26, "div", 6);
       \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_26_listener() {
-        return ctx.launch("browser", ctx.brwComp, "Browser", "fa-brands fa-firefox-browser");
+        return ctx.launch("text-editor", ctx.txtComp, "Text Editor", "fa-solid fa-file-lines");
       });
       \u0275\u0275elementStart(27, "div", 7);
       \u0275\u0275element(28, "i", 12);
       \u0275\u0275elementEnd();
       \u0275\u0275elementStart(29, "span");
-      \u0275\u0275text(30, "Browser");
+      \u0275\u0275text(30, "Text Editor");
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(31, "div", 6);
       \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_31_listener() {
-        return ctx.launch("calculator", ctx.calcComp, "Calculator", "fa-solid fa-calculator");
+        return ctx.launch("browser", ctx.brwComp, "Browser", "fa-brands fa-firefox-browser");
       });
       \u0275\u0275elementStart(32, "div", 7);
       \u0275\u0275element(33, "i", 13);
       \u0275\u0275elementEnd();
       \u0275\u0275elementStart(34, "span");
-      \u0275\u0275text(35, "Calculator");
+      \u0275\u0275text(35, "Browser");
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(36, "div", 6);
+      \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_36_listener() {
+        return ctx.launch("calculator", ctx.calcComp, "Calculator", "fa-solid fa-calculator");
+      });
+      \u0275\u0275elementStart(37, "div", 7);
+      \u0275\u0275element(38, "i", 14);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(39, "span");
+      \u0275\u0275text(40, "Calculator");
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(41, "div", 6);
+      \u0275\u0275listener("click", function StartMenuComponent_Template_div_click_41_listener() {
+        return ctx.launch("file-transfer", ctx.ftComp, "File Transfer", "fa-solid fa-right-left");
+      });
+      \u0275\u0275elementStart(42, "div", 7);
+      \u0275\u0275element(43, "i", 15);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(44, "span");
+      \u0275\u0275text(45, "File Transfer");
       \u0275\u0275elementEnd()()()()();
     }
   }, dependencies: [CommonModule], styles: ["\n\n.start-menu-overlay[_ngcontent-%COMP%] {\n  position: fixed;\n  top: 0;\n  left: 0;\n  width: 100vw;\n  height: 100vh;\n  background: rgba(0, 0, 0, 0.5);\n  z-index: 9999;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  animation: _ngcontent-%COMP%_fadeIn 0.2s;\n}\n.app-grid[_ngcontent-%COMP%] {\n  width: 80%;\n  max-width: 900px;\n  height: 70%;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  animation: _ngcontent-%COMP%_zoomIn 0.2s;\n}\n.search-bar[_ngcontent-%COMP%] {\n  width: 50%;\n  background: rgba(60, 60, 60, 0.9);\n  border-radius: 25px;\n  padding: 10px 20px;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  margin-bottom: 40px;\n  border: 1px solid rgba(255, 255, 255, 0.1);\n}\n.search-bar[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  color: #aaa;\n}\n.search-bar[_ngcontent-%COMP%]   input[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: white;\n  flex: 1;\n  outline: none;\n  font-size: 1.1rem;\n}\n.apps-container[_ngcontent-%COMP%] {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  gap: 30px;\n  width: 100%;\n  justify-items: center;\n}\n.app-item[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  color: white;\n  transition: transform 0.2s;\n}\n.app-item[_ngcontent-%COMP%]:hover {\n  transform: scale(1.1);\n}\n.app-item[_ngcontent-%COMP%]:hover   .icon-box[_ngcontent-%COMP%] {\n  background: rgba(255, 255, 255, 0.1);\n}\n.app-item[_ngcontent-%COMP%]   .icon-box[_ngcontent-%COMP%] {\n  width: 64px;\n  height: 64px;\n  background: rgba(255, 255, 255, 0.05);\n  border-radius: 12px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 2rem;\n}\n.app-item[_ngcontent-%COMP%]   span[_ngcontent-%COMP%] {\n  font-size: 0.9rem;\n}\n@keyframes _ngcontent-%COMP%_fadeIn {\n  from {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@keyframes _ngcontent-%COMP%_zoomIn {\n  from {\n    transform: scale(0.9);\n  }\n  to {\n    transform: scale(1);\n  }\n}\n/*# sourceMappingURL=start-menu.component.css.map */"] });
@@ -26132,9 +27400,14 @@ var StartMenuComponent = class _StartMenuComponent {
              <span>Terminal</span>
            </div>
 
-           <div class="app-item" (click)="launch('process-manager', pmComp, 'Task Manager', 'fa-solid fa-chart-line')">
+           <div class="app-item" (click)="launch('process-manager', pmComp, 'Process Manager', 'fa-solid fa-chart-line')">
              <div class="icon-box"><i class="fa-solid fa-chart-line"></i></div>
              <span>System Monitor</span>
+           </div>
+
+           <div class="app-item" (click)="launch('service-manager', smComp, 'Service Manager', 'fa-solid fa-server')">
+             <div class="icon-box"><i class="fa-solid fa-server"></i></div>
+             <span>Services</span>
            </div>
 
            <div class="app-item" (click)="launch('text-editor', txtComp, 'Text Editor', 'fa-solid fa-file-lines')">
@@ -26151,6 +27424,11 @@ var StartMenuComponent = class _StartMenuComponent {
              <div class="icon-box"><i class="fa-solid fa-calculator"></i></div>
              <span>Calculator</span>
            </div>
+
+           <div class="app-item" (click)="launch('file-transfer', ftComp, 'File Transfer', 'fa-solid fa-right-left')">
+             <div class="icon-box"><i class="fa-solid fa-right-left"></i></div>
+             <span>File Transfer</span>
+           </div>
         </div>
       </div>
     </div>
@@ -26158,7 +27436,7 @@ var StartMenuComponent = class _StartMenuComponent {
   }], null, null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(StartMenuComponent, { className: "StartMenuComponent", filePath: "src/app/components/os/start-menu/start-menu.component.ts", lineNumber: 147 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(StartMenuComponent, { className: "StartMenuComponent", filePath: "src/app/components/os/start-menu/start-menu.component.ts", lineNumber: 159 });
 })();
 
 // src/app/services/settings.service.ts
@@ -26169,6 +27447,8 @@ var SettingsService = class _SettingsService {
   backgroundImage = signal(localStorage.getItem("backgroundImage"));
   backgroundColor = signal(localStorage.getItem("backgroundColor") || "#2c001e");
   backgroundType = signal(localStorage.getItem("backgroundType") || "color");
+  http = inject(HttpClient);
+  apiUrl = "http://localhost:8000/api/wallpapers";
   constructor() {
     effect(() => {
       const bgImage = this.backgroundImage();
@@ -26185,6 +27465,17 @@ var SettingsService = class _SettingsService {
       localStorage.setItem("backgroundType", this.backgroundType());
     });
   }
+  getWallpapers() {
+    return this.http.get(`${this.apiUrl}/list`);
+  }
+  uploadWallpaper(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return this.http.post(`${this.apiUrl}/upload`, formData);
+  }
+  addWallpaperFromPath(path) {
+    return this.http.post(`${this.apiUrl}/add`, { path });
+  }
   setBackgroundImage(url) {
     this.backgroundImage.set(url);
     this.backgroundType.set("image");
@@ -26198,8 +27489,12 @@ var SettingsService = class _SettingsService {
   }
   getBackgroundStyle() {
     if (this.backgroundType() === "image" && this.backgroundImage()) {
+      let url = this.backgroundImage();
+      if (url?.startsWith("/wallpapers/")) {
+        url = `http://localhost:8000${url}`;
+      }
       return {
-        "background-image": `url(${this.backgroundImage()})`,
+        "background-image": `url(${url})`,
         "background-size": "cover",
         "background-position": "center"
       };
@@ -26226,66 +27521,554 @@ var SettingsService = class _SettingsService {
   }], () => [], null);
 })();
 
-// src/app/components/apps/settings/settings.component.ts
-function SettingsComponent_Conditional_14_Template(rf, ctx) {
+// src/app/components/apps/settings/default-program-settings/default-program-settings.component.ts
+var _forTrack06 = ($index, $item) => $item.id;
+function DefaultProgramSettingsComponent_For_12_For_14_Template(rf, ctx) {
   if (rf & 1) {
-    const _r1 = \u0275\u0275getCurrentView();
-    \u0275\u0275elementStart(0, "div", 6)(1, "label", 8);
+    \u0275\u0275elementStart(0, "option", 17);
+    \u0275\u0275text(1);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const app_r6 = ctx.$implicit;
+    \u0275\u0275property("value", app_r6.id);
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate(app_r6.name);
+  }
+}
+function DefaultProgramSettingsComponent_For_12_For_20_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r7 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 20);
+    \u0275\u0275text(1);
+    \u0275\u0275elementStart(2, "i", 24);
+    \u0275\u0275listener("click", function DefaultProgramSettingsComponent_For_12_For_20_Template_i_click_2_listener() {
+      const app_r8 = \u0275\u0275restoreView(_r7).$implicit;
+      const ext_r4 = \u0275\u0275nextContext().$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.removeAssociation(ext_r4, app_r8.id));
+    });
+    \u0275\u0275elementEnd()();
+  }
+  if (rf & 2) {
+    const app_r8 = ctx.$implicit;
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate1(" ", app_r8.name, " ");
+  }
+}
+function DefaultProgramSettingsComponent_For_12_Conditional_21_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "span", 21);
+    \u0275\u0275text(1, "No apps associated.");
+    \u0275\u0275elementEnd();
+  }
+}
+function DefaultProgramSettingsComponent_For_12_For_28_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "option", 17);
+    \u0275\u0275text(1);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const app_r9 = ctx.$implicit;
+    \u0275\u0275property("value", app_r9.id);
+    \u0275\u0275advance();
+    \u0275\u0275textInterpolate(app_r9.name);
+  }
+}
+function DefaultProgramSettingsComponent_For_12_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r3 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 8)(1, "div", 9)(2, "span", 10);
+    \u0275\u0275text(3);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(4, "button", 11);
+    \u0275\u0275listener("click", function DefaultProgramSettingsComponent_For_12_Template_button_click_4_listener() {
+      const ext_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.removeExtension(ext_r4));
+    });
+    \u0275\u0275element(5, "i", 12);
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(6, "div", 13)(7, "div", 14)(8, "label");
+    \u0275\u0275text(9, "Default:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(10, "select", 15);
+    \u0275\u0275listener("ngModelChange", function DefaultProgramSettingsComponent_For_12_Template_select_ngModelChange_10_listener($event) {
+      const ext_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.setDefaultApp(ext_r4, $event));
+    });
+    \u0275\u0275elementStart(11, "option", 16);
+    \u0275\u0275text(12, "Let System Decide");
+    \u0275\u0275elementEnd();
+    \u0275\u0275repeaterCreate(13, DefaultProgramSettingsComponent_For_12_For_14_Template, 2, 2, "option", 17, _forTrack06);
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(15, "div", 18)(16, "label");
+    \u0275\u0275text(17, "Associated:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(18, "div", 19);
+    \u0275\u0275repeaterCreate(19, DefaultProgramSettingsComponent_For_12_For_20_Template, 3, 1, "div", 20, _forTrack06);
+    \u0275\u0275template(21, DefaultProgramSettingsComponent_For_12_Conditional_21_Template, 2, 0, "span", 21);
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(22, "div", 22)(23, "select", null, 1)(25, "option", 23);
+    \u0275\u0275text(26, "Add application...");
+    \u0275\u0275elementEnd();
+    \u0275\u0275repeaterCreate(27, DefaultProgramSettingsComponent_For_12_For_28_Template, 2, 2, "option", 17, _forTrack06);
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(29, "button", 6);
+    \u0275\u0275listener("click", function DefaultProgramSettingsComponent_For_12_Template_button_click_29_listener() {
+      const ext_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const addAppSelect_r10 = \u0275\u0275reference(24);
+      const ctx_r4 = \u0275\u0275nextContext();
+      ctx_r4.addAssociation(ext_r4, addAppSelect_r10.value);
+      return \u0275\u0275resetView(addAppSelect_r10.value = "");
+    });
+    \u0275\u0275text(30, "Add");
+    \u0275\u0275elementEnd()()()();
+  }
+  if (rf & 2) {
+    const ext_r4 = ctx.$implicit;
+    const ctx_r4 = \u0275\u0275nextContext();
+    \u0275\u0275advance(3);
+    \u0275\u0275textInterpolate1(".", ext_r4, "");
+    \u0275\u0275advance(7);
+    \u0275\u0275property("ngModel", ctx_r4.getDefaultAppId(ext_r4));
+    \u0275\u0275advance();
+    \u0275\u0275property("ngValue", null);
+    \u0275\u0275advance(2);
+    \u0275\u0275repeater(ctx_r4.getAssociatedApps(ext_r4));
+    \u0275\u0275advance(6);
+    \u0275\u0275repeater(ctx_r4.getAssociatedApps(ext_r4));
+    \u0275\u0275advance(2);
+    \u0275\u0275conditional(ctx_r4.getAssociatedApps(ext_r4).length === 0 ? 21 : -1);
+    \u0275\u0275advance(6);
+    \u0275\u0275repeater(ctx_r4.getFileHandlers());
+  }
+}
+var DefaultProgramSettingsComponent = class _DefaultProgramSettingsComponent {
+  registry = inject(AppRegistryService);
+  allExtensions = computed(() => this.registry.getConfiguredExtensions());
+  // We can't easily compute file handlers reactively if not exposed as signal, 
+  // but apps map is not signal. However, loading is mostly static.
+  // Ideally registry should expose signals.
+  // For now we assume static list after load.
+  getFileHandlers() {
+    return this.registry.getFileHandlers();
+  }
+  getAssociatedApps(ext) {
+    return this.registry.getAssociatedApps(ext);
+  }
+  getDefaultAppId(ext) {
+    const app = this.registry.getDefaultApp(ext);
+    return app ? app.id : null;
+  }
+  setDefaultApp(ext, appId) {
+    this.registry.setDefaultApp(ext, appId);
+  }
+  addExtension(ext) {
+    if (!ext)
+      return;
+    this.registry.addExtension(ext);
+  }
+  removeExtension(ext) {
+    if (confirm(`Remove extension .${ext}?`)) {
+      this.registry.removeExtension(ext);
+    }
+  }
+  addAssociation(ext, appId) {
+    if (!appId)
+      return;
+    this.registry.addAssociation(ext, appId);
+  }
+  removeAssociation(ext, appId) {
+    this.registry.removeAssociation(ext, appId);
+  }
+  static \u0275fac = function DefaultProgramSettingsComponent_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _DefaultProgramSettingsComponent)();
+  };
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _DefaultProgramSettingsComponent, selectors: [["app-default-program-settings"]], decls: 13, vars: 0, consts: [["newExtInput", ""], ["addAppSelect", ""], [1, "settings-container"], [1, "desc"], [1, "top-bar"], ["type", "text", "placeholder", "Add extension (e.g. log)", 3, "keyup.enter"], [3, "click"], [1, "extension-list"], [1, "ext-block"], [1, "ext-header"], [1, "ext-name"], ["title", "Remove Extension", 1, "btn-remove-ext", 3, "click"], [1, "fa-solid", "fa-trash"], [1, "ext-body"], [1, "row"], [3, "ngModelChange", "ngModel"], [3, "ngValue"], [3, "value"], [1, "row", "associated-list"], [1, "tags"], [1, "tag"], [1, "no-apps"], [1, "row", "add-app"], ["value", "", "disabled", "", "selected", ""], [1, "fa-solid", "fa-xmark", 3, "click"]], template: function DefaultProgramSettingsComponent_Template(rf, ctx) {
+    if (rf & 1) {
+      const _r1 = \u0275\u0275getCurrentView();
+      \u0275\u0275elementStart(0, "div", 2)(1, "h3");
+      \u0275\u0275text(2, "Default Apps");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(3, "p", 3);
+      \u0275\u0275text(4, "Manage file associations and default programs.");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(5, "div", 4)(6, "input", 5, 0);
+      \u0275\u0275listener("keyup.enter", function DefaultProgramSettingsComponent_Template_input_keyup_enter_6_listener() {
+        \u0275\u0275restoreView(_r1);
+        const newExtInput_r2 = \u0275\u0275reference(7);
+        ctx.addExtension(newExtInput_r2.value);
+        return \u0275\u0275resetView(newExtInput_r2.value = "");
+      });
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(8, "button", 6);
+      \u0275\u0275listener("click", function DefaultProgramSettingsComponent_Template_button_click_8_listener() {
+        \u0275\u0275restoreView(_r1);
+        const newExtInput_r2 = \u0275\u0275reference(7);
+        ctx.addExtension(newExtInput_r2.value);
+        return \u0275\u0275resetView(newExtInput_r2.value = "");
+      });
+      \u0275\u0275text(9, "Add Ext");
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(10, "div", 7);
+      \u0275\u0275repeaterCreate(11, DefaultProgramSettingsComponent_For_12_Template, 31, 4, "div", 8, \u0275\u0275repeaterTrackByIdentity);
+      \u0275\u0275elementEnd()();
+    }
+    if (rf & 2) {
+      \u0275\u0275advance(11);
+      \u0275\u0275repeater(ctx.allExtensions());
+    }
+  }, dependencies: [CommonModule, FormsModule, NgSelectOption, \u0275NgSelectMultipleOption, SelectControlValueAccessor, NgControlStatus, NgModel], styles: ['\n\n.settings-container[_ngcontent-%COMP%] {\n  padding: 20px;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n}\nh3[_ngcontent-%COMP%] {\n  margin-top: 0;\n  font-weight: normal;\n  font-size: 1.5rem;\n  margin-bottom: 5px;\n}\n.desc[_ngcontent-%COMP%] {\n  color: #888;\n  font-size: 0.9rem;\n  margin-bottom: 20px;\n}\n.top-bar[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 10px;\n  margin-bottom: 20px;\n}\n.top-bar[_ngcontent-%COMP%]   input[_ngcontent-%COMP%] {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 5px 10px;\n  border-radius: 4px;\n}\n.top-bar[_ngcontent-%COMP%]   button[_ngcontent-%COMP%] {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 5px 10px;\n  border-radius: 4px;\n  cursor: pointer;\n}\n.top-bar[_ngcontent-%COMP%]   button[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n}\n.extension-list[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n  border: 1px solid #333;\n  border-radius: 4px;\n  background: #252526;\n  padding: 10px;\n}\n.ext-block[_ngcontent-%COMP%] {\n  background: #1e1e1e;\n  border: 1px solid #333;\n  border-radius: 4px;\n  margin-bottom: 15px;\n  padding: 10px;\n}\n.ext-header[_ngcontent-%COMP%] {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  border-bottom: 1px solid #333;\n  padding-bottom: 5px;\n  margin-bottom: 10px;\n}\n.ext-header[_ngcontent-%COMP%]   .ext-name[_ngcontent-%COMP%] {\n  font-weight: bold;\n  color: #519aba;\n  font-size: 1.1rem;\n}\n.ext-header[_ngcontent-%COMP%]   .btn-remove-ext[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #888;\n  cursor: pointer;\n}\n.ext-header[_ngcontent-%COMP%]   .btn-remove-ext[_ngcontent-%COMP%]:hover {\n  color: #a42e2e;\n}\n.ext-body[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.row[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.row[_ngcontent-%COMP%]   label[_ngcontent-%COMP%] {\n  width: 80px;\n  color: #aaa;\n  font-size: 0.9rem;\n}\nselect[_ngcontent-%COMP%] {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 4px 8px;\n  border-radius: 4px;\n  flex: 1;\n  max-width: 300px;\n}\n.tags[_ngcontent-%COMP%] {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 5px;\n  flex: 1;\n}\n.tag[_ngcontent-%COMP%] {\n  background: #37373d;\n  padding: 2px 8px;\n  border-radius: 4px;\n  font-size: 0.9rem;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n.tag[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  cursor: pointer;\n  color: #888;\n}\n.tag[_ngcontent-%COMP%]   i[_ngcontent-%COMP%]:hover {\n  color: #ccc;\n}\n.no-apps[_ngcontent-%COMP%] {\n  font-style: italic;\n  color: #666;\n  font-size: 0.9rem;\n}\n.add-app[_ngcontent-%COMP%]   button[_ngcontent-%COMP%] {\n  padding: 4px 10px;\n  background: #007fd4;\n  color: white;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n}\n.add-app[_ngcontent-%COMP%]   button[_ngcontent-%COMP%]:hover {\n  background: #0060a0;\n}\n/*# sourceMappingURL=default-program-settings.component.css.map */'] });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(DefaultProgramSettingsComponent, [{
+    type: Component,
+    args: [{ selector: "app-default-program-settings", standalone: true, imports: [CommonModule, FormsModule], template: `
+    <div class="settings-container">
+      <h3>Default Apps</h3>
+      <p class="desc">Manage file associations and default programs.</p>
+
+      <div class="top-bar">
+          <input type="text" placeholder="Add extension (e.g. log)" #newExtInput (keyup.enter)="addExtension(newExtInput.value); newExtInput.value=''">
+          <button (click)="addExtension(newExtInput.value); newExtInput.value=''">Add Ext</button>
+      </div>
+      
+      <div class="extension-list">
+        @for (ext of allExtensions(); track ext) {
+            <div class="ext-block">
+                <div class="ext-header">
+                    <span class="ext-name">.{{ ext }}</span>
+                    <button class="btn-remove-ext" (click)="removeExtension(ext)" title="Remove Extension">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+                
+                <div class="ext-body">
+                    <div class="row">
+                        <label>Default:</label>
+                        <select [ngModel]="getDefaultAppId(ext)" (ngModelChange)="setDefaultApp(ext, $event)">
+                            <option [ngValue]="null">Let System Decide</option>
+                            @for (app of getAssociatedApps(ext); track app.id) {
+                                <option [value]="app.id">{{ app.name }}</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="row associated-list">
+                        <label>Associated:</label>
+                        <div class="tags">
+                            @for (app of getAssociatedApps(ext); track app.id) {
+                                <div class="tag">
+                                    {{ app.name }}
+                                    <i class="fa-solid fa-xmark" (click)="removeAssociation(ext, app.id)"></i>
+                                </div>
+                            }
+                            @if (getAssociatedApps(ext).length === 0) {
+                                <span class="no-apps">No apps associated.</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="row add-app">
+                        <select #addAppSelect>
+                            <option value="" disabled selected>Add application...</option>
+                            @for (app of getFileHandlers(); track app.id) {
+                                <option [value]="app.id">{{ app.name }}</option>
+                            }
+                        </select>
+                        <button (click)="addAssociation(ext, addAppSelect.value); addAppSelect.value=''">Add</button>
+                    </div>
+                </div>
+            </div>
+        }
+      </div>
+    </div>
+  `, styles: ['/* angular:styles/component:css;9c1a74b0fea5c512a32235c81a479a54a906e4a924c326f1ea1469de41de3b76;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/settings/default-program-settings/default-program-settings.component.ts */\n.settings-container {\n  padding: 20px;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n}\nh3 {\n  margin-top: 0;\n  font-weight: normal;\n  font-size: 1.5rem;\n  margin-bottom: 5px;\n}\n.desc {\n  color: #888;\n  font-size: 0.9rem;\n  margin-bottom: 20px;\n}\n.top-bar {\n  display: flex;\n  gap: 10px;\n  margin-bottom: 20px;\n}\n.top-bar input {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 5px 10px;\n  border-radius: 4px;\n}\n.top-bar button {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 5px 10px;\n  border-radius: 4px;\n  cursor: pointer;\n}\n.top-bar button:hover {\n  background: #4b4b4b;\n}\n.extension-list {\n  flex: 1;\n  overflow-y: auto;\n  border: 1px solid #333;\n  border-radius: 4px;\n  background: #252526;\n  padding: 10px;\n}\n.ext-block {\n  background: #1e1e1e;\n  border: 1px solid #333;\n  border-radius: 4px;\n  margin-bottom: 15px;\n  padding: 10px;\n}\n.ext-header {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  border-bottom: 1px solid #333;\n  padding-bottom: 5px;\n  margin-bottom: 10px;\n}\n.ext-header .ext-name {\n  font-weight: bold;\n  color: #519aba;\n  font-size: 1.1rem;\n}\n.ext-header .btn-remove-ext {\n  background: transparent;\n  border: none;\n  color: #888;\n  cursor: pointer;\n}\n.ext-header .btn-remove-ext:hover {\n  color: #a42e2e;\n}\n.ext-body {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.row {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.row label {\n  width: 80px;\n  color: #aaa;\n  font-size: 0.9rem;\n}\nselect {\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: #e0e0e0;\n  padding: 4px 8px;\n  border-radius: 4px;\n  flex: 1;\n  max-width: 300px;\n}\n.tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 5px;\n  flex: 1;\n}\n.tag {\n  background: #37373d;\n  padding: 2px 8px;\n  border-radius: 4px;\n  font-size: 0.9rem;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n.tag i {\n  cursor: pointer;\n  color: #888;\n}\n.tag i:hover {\n  color: #ccc;\n}\n.no-apps {\n  font-style: italic;\n  color: #666;\n  font-size: 0.9rem;\n}\n.add-app button {\n  padding: 4px 10px;\n  background: #007fd4;\n  color: white;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n}\n.add-app button:hover {\n  background: #0060a0;\n}\n/*# sourceMappingURL=default-program-settings.component.css.map */\n'] }]
+  }], null, null);
+})();
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(DefaultProgramSettingsComponent, { className: "DefaultProgramSettingsComponent", filePath: "src/app/components/apps/settings/default-program-settings/default-program-settings.component.ts", lineNumber: 206 });
+})();
+
+// src/app/services/backup.service.ts
+var BackupService = class _BackupService {
+  http = inject(HttpClient);
+  apiUrl = "http://localhost:8000/api/backup";
+  exportData(userData) {
+    return this.http.post(`${this.apiUrl}/export`, { user_data: userData });
+  }
+  importData(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return this.http.post(`${this.apiUrl}/import`, formData);
+  }
+  static \u0275fac = function BackupService_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _BackupService)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({ token: _BackupService, factory: _BackupService.\u0275fac, providedIn: "root" });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(BackupService, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], null, null);
+})();
+
+// src/app/components/apps/settings/settings.component.ts
+function SettingsComponent_Conditional_12_Conditional_14_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r3 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 14)(1, "label", 16);
     \u0275\u0275text(2, "Pick a color:");
     \u0275\u0275elementEnd();
-    \u0275\u0275elementStart(3, "input", 9);
-    \u0275\u0275listener("input", function SettingsComponent_Conditional_14_Template_input_input_3_listener($event) {
-      \u0275\u0275restoreView(_r1);
-      const ctx_r1 = \u0275\u0275nextContext();
+    \u0275\u0275elementStart(3, "input", 17);
+    \u0275\u0275listener("input", function SettingsComponent_Conditional_12_Conditional_14_Template_input_input_3_listener($event) {
+      \u0275\u0275restoreView(_r3);
+      const ctx_r1 = \u0275\u0275nextContext(2);
       return \u0275\u0275resetView(ctx_r1.onColorChange($event));
     });
     \u0275\u0275elementEnd()();
   }
   if (rf & 2) {
-    const ctx_r1 = \u0275\u0275nextContext();
+    const ctx_r1 = \u0275\u0275nextContext(2);
     \u0275\u0275advance(3);
     \u0275\u0275property("value", ctx_r1.settings.backgroundColor());
   }
 }
-function SettingsComponent_Conditional_15_Conditional_5_Template(rf, ctx) {
+function SettingsComponent_Conditional_12_Conditional_15_Conditional_9_For_2_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275elementStart(0, "div", 13)(1, "p");
-    \u0275\u0275text(2, "Current Image:");
-    \u0275\u0275elementEnd();
-    \u0275\u0275element(3, "img", 14);
+    const _r5 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 27);
+    \u0275\u0275listener("click", function SettingsComponent_Conditional_12_Conditional_15_Conditional_9_For_2_Template_div_click_0_listener() {
+      const wp_r6 = \u0275\u0275restoreView(_r5).$implicit;
+      const ctx_r1 = \u0275\u0275nextContext(4);
+      return \u0275\u0275resetView(ctx_r1.onWallpaperSelect(wp_r6));
+    });
+    \u0275\u0275element(1, "img", 28);
     \u0275\u0275elementEnd();
   }
   if (rf & 2) {
-    const ctx_r1 = \u0275\u0275nextContext(2);
+    const wp_r6 = ctx.$implicit;
+    const ctx_r1 = \u0275\u0275nextContext(4);
+    \u0275\u0275advance();
+    \u0275\u0275classProp("selected", ctx_r1.settings.backgroundImage() === wp_r6);
+    \u0275\u0275property("src", wp_r6, \u0275\u0275sanitizeUrl);
+  }
+}
+function SettingsComponent_Conditional_12_Conditional_15_Conditional_9_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 24);
+    \u0275\u0275repeaterCreate(1, SettingsComponent_Conditional_12_Conditional_15_Conditional_9_For_2_Template, 2, 3, "div", 26, \u0275\u0275repeaterTrackByIdentity);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const ctx_r1 = \u0275\u0275nextContext(3);
+    \u0275\u0275advance();
+    \u0275\u0275repeater(ctx_r1.wallpapers());
+  }
+}
+function SettingsComponent_Conditional_12_Conditional_15_Conditional_10_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 25)(1, "p");
+    \u0275\u0275text(2, "Current Selection:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275element(3, "img", 29);
+    \u0275\u0275elementEnd();
+  }
+  if (rf & 2) {
+    const ctx_r1 = \u0275\u0275nextContext(3);
     \u0275\u0275advance(3);
     \u0275\u0275property("src", ctx_r1.settings.backgroundImage(), \u0275\u0275sanitizeUrl);
   }
 }
-function SettingsComponent_Conditional_15_Template(rf, ctx) {
+function SettingsComponent_Conditional_12_Conditional_15_Template(rf, ctx) {
   if (rf & 1) {
-    const _r3 = \u0275\u0275getCurrentView();
-    \u0275\u0275elementStart(0, "div", 7)(1, "label", 10);
-    \u0275\u0275element(2, "i", 11);
-    \u0275\u0275text(3, " Upload Image ");
+    const _r4 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 15)(1, "div", 18)(2, "label", 19);
+    \u0275\u0275element(3, "i", 20);
+    \u0275\u0275text(4, " Upload from Client ");
     \u0275\u0275elementEnd();
-    \u0275\u0275elementStart(4, "input", 12);
-    \u0275\u0275listener("change", function SettingsComponent_Conditional_15_Template_input_change_4_listener($event) {
-      \u0275\u0275restoreView(_r3);
-      const ctx_r1 = \u0275\u0275nextContext();
+    \u0275\u0275elementStart(5, "input", 21);
+    \u0275\u0275listener("change", function SettingsComponent_Conditional_12_Conditional_15_Template_input_change_5_listener($event) {
+      \u0275\u0275restoreView(_r4);
+      const ctx_r1 = \u0275\u0275nextContext(2);
       return \u0275\u0275resetView(ctx_r1.onFileSelected($event));
     });
     \u0275\u0275elementEnd();
-    \u0275\u0275template(5, SettingsComponent_Conditional_15_Conditional_5_Template, 4, 1, "div", 13);
+    \u0275\u0275elementStart(6, "button", 22);
+    \u0275\u0275listener("click", function SettingsComponent_Conditional_12_Conditional_15_Template_button_click_6_listener() {
+      \u0275\u0275restoreView(_r4);
+      const ctx_r1 = \u0275\u0275nextContext(2);
+      return \u0275\u0275resetView(ctx_r1.openSystemFilePicker());
+    });
+    \u0275\u0275element(7, "i", 23);
+    \u0275\u0275text(8, " Select from System ");
+    \u0275\u0275elementEnd()();
+    \u0275\u0275template(9, SettingsComponent_Conditional_12_Conditional_15_Conditional_9_Template, 3, 0, "div", 24)(10, SettingsComponent_Conditional_12_Conditional_15_Conditional_10_Template, 4, 1, "div", 25);
     \u0275\u0275elementEnd();
   }
   if (rf & 2) {
+    const ctx_r1 = \u0275\u0275nextContext(2);
+    \u0275\u0275advance(9);
+    \u0275\u0275conditional(ctx_r1.wallpapers().length > 0 ? 9 : -1);
+    \u0275\u0275advance();
+    \u0275\u0275conditional(ctx_r1.settings.backgroundImage() ? 10 : -1);
+  }
+}
+function SettingsComponent_Conditional_12_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r1 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 8)(1, "h2");
+    \u0275\u0275text(2, "Personalization");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "div", 9)(4, "h3");
+    \u0275\u0275text(5, "Background");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(6, "div", 10)(7, "label")(8, "input", 11);
+    \u0275\u0275listener("change", function SettingsComponent_Conditional_12_Template_input_change_8_listener() {
+      \u0275\u0275restoreView(_r1);
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.setType("color"));
+    });
+    \u0275\u0275elementEnd();
+    \u0275\u0275text(9, " Solid Color ");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(10, "label")(11, "input", 12);
+    \u0275\u0275listener("change", function SettingsComponent_Conditional_12_Template_input_change_11_listener() {
+      \u0275\u0275restoreView(_r1);
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.setType("image"));
+    });
+    \u0275\u0275elementEnd();
+    \u0275\u0275text(12, " Image ");
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(13, "div", 13);
+    \u0275\u0275template(14, SettingsComponent_Conditional_12_Conditional_14_Template, 4, 1, "div", 14)(15, SettingsComponent_Conditional_12_Conditional_15_Template, 11, 2, "div", 15);
+    \u0275\u0275elementEnd()()();
+  }
+  if (rf & 2) {
     const ctx_r1 = \u0275\u0275nextContext();
-    \u0275\u0275advance(5);
-    \u0275\u0275conditional(ctx_r1.settings.backgroundImage() ? 5 : -1);
+    \u0275\u0275advance(8);
+    \u0275\u0275property("checked", ctx_r1.settings.backgroundType() === "color");
+    \u0275\u0275advance(3);
+    \u0275\u0275property("checked", ctx_r1.settings.backgroundType() === "image");
+    \u0275\u0275advance(3);
+    \u0275\u0275conditional(ctx_r1.settings.backgroundType() === "color" ? 14 : 15);
+  }
+}
+function SettingsComponent_Conditional_13_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "app-default-program-settings");
+  }
+}
+function SettingsComponent_Conditional_14_Conditional_11_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "i", 32);
+  }
+}
+function SettingsComponent_Conditional_14_Conditional_12_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "i", 33);
+  }
+}
+function SettingsComponent_Conditional_14_Conditional_29_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "i", 32);
+  }
+}
+function SettingsComponent_Conditional_14_Conditional_30_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "i", 20);
+  }
+}
+function SettingsComponent_Conditional_14_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r7 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 8)(1, "h2");
+    \u0275\u0275text(2, "Backup & Restore");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "p", 30);
+    \u0275\u0275text(4, "Export your settings, wallpapers, extensions, and bookmarks to the host machine, or import them back.");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(5, "div", 9)(6, "h3");
+    \u0275\u0275text(7, "Export Data");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(8, "p");
+    \u0275\u0275text(9, "Create a backup of your current configuration.");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(10, "button", 31);
+    \u0275\u0275listener("click", function SettingsComponent_Conditional_14_Template_button_click_10_listener() {
+      \u0275\u0275restoreView(_r7);
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.exportData());
+    });
+    \u0275\u0275template(11, SettingsComponent_Conditional_14_Conditional_11_Template, 1, 0, "i", 32)(12, SettingsComponent_Conditional_14_Conditional_12_Template, 1, 0, "i", 33);
+    \u0275\u0275text(13, " Export & Download ");
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(14, "div", 34)(15, "h3");
+    \u0275\u0275text(16, "Import Data");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(17, "div", 35)(18, "strong");
+    \u0275\u0275element(19, "i", 36);
+    \u0275\u0275text(20, " Warning");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(21, "p");
+    \u0275\u0275text(22, "Importing data will OVERWRITE your current settings, wallpapers, extensions, and bookmarks. This action cannot be undone.");
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(23, "p");
+    \u0275\u0275text(24, "Restore configuration from a previously exported backup.");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(25, "div", 37)(26, "input", 38, 0);
+    \u0275\u0275listener("change", function SettingsComponent_Conditional_14_Template_input_change_26_listener($event) {
+      \u0275\u0275restoreView(_r7);
+      const ctx_r1 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r1.importData($event));
+    });
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(28, "button", 31);
+    \u0275\u0275listener("click", function SettingsComponent_Conditional_14_Template_button_click_28_listener() {
+      \u0275\u0275restoreView(_r7);
+      const fileInput_r8 = \u0275\u0275reference(27);
+      return \u0275\u0275resetView(fileInput_r8.click());
+    });
+    \u0275\u0275template(29, SettingsComponent_Conditional_14_Conditional_29_Template, 1, 0, "i", 32)(30, SettingsComponent_Conditional_14_Conditional_30_Template, 1, 0, "i", 20);
+    \u0275\u0275text(31, " Select Backup File ");
+    \u0275\u0275elementEnd()()()();
+  }
+  if (rf & 2) {
+    const ctx_r1 = \u0275\u0275nextContext();
+    \u0275\u0275advance(10);
+    \u0275\u0275property("disabled", ctx_r1.loading());
+    \u0275\u0275advance();
+    \u0275\u0275conditional(ctx_r1.loading() ? 11 : 12);
+    \u0275\u0275advance(17);
+    \u0275\u0275property("disabled", ctx_r1.loading());
+    \u0275\u0275advance();
+    \u0275\u0275conditional(ctx_r1.loading() ? 29 : 30);
   }
 }
 var SettingsComponent = class _SettingsComponent {
   settings = inject(SettingsService);
+  wm = inject(WindowManagerService);
+  fs = inject(FileSystemService);
+  backupService = inject(BackupService);
+  registry = inject(AppRegistryService);
+  activeTab = signal("personalization");
+  loading = signal(false);
+  wallpapers = signal([]);
+  ngOnInit() {
+    this.loadWallpapers();
+  }
+  loadWallpapers() {
+    this.settings.getWallpapers().subscribe((res) => {
+      this.wallpapers.set(res.wallpapers);
+    });
+  }
   setType(type) {
     this.settings.setBackgroundType(type);
   }
@@ -26293,132 +28076,310 @@ var SettingsComponent = class _SettingsComponent {
     const input2 = event.target;
     this.settings.setBackgroundColor(input2.value);
   }
+  onWallpaperSelect(url) {
+    this.settings.setBackgroundImage(url);
+  }
   onFileSelected(event) {
     const input2 = event.target;
     if (input2.files && input2.files[0]) {
       const file = input2.files[0];
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        this.settings.setBackgroundImage(result);
-      };
-      reader.readAsDataURL(file);
+      this.settings.uploadWallpaper(file).subscribe((res) => {
+        this.loadWallpapers();
+        this.settings.setBackgroundImage(res.url);
+      });
+    }
+  }
+  openSystemFilePicker() {
+    this.wm.openFileDialog({
+      mode: "open",
+      filters: [".png", ".jpg", ".jpeg", ".webp"]
+    }).then((res) => {
+      if (res) {
+        const fullPath = this.fs.getFullPath([...res.path, res.fileName]);
+        this.settings.addWallpaperFromPath(fullPath).subscribe((result) => {
+          if (result.success) {
+            this.loadWallpapers();
+            this.settings.setBackgroundImage(result.url);
+          }
+        });
+      }
+    });
+  }
+  exportData() {
+    this.loading.set(true);
+    const userData = {
+      backgroundImage: localStorage.getItem("backgroundImage"),
+      backgroundColor: localStorage.getItem("backgroundColor"),
+      backgroundType: localStorage.getItem("backgroundType"),
+      fileAssociations_v2: localStorage.getItem("fileAssociations_v2"),
+      browserBookmarks: localStorage.getItem("browserBookmarks")
+    };
+    this.backupService.exportData(userData).subscribe({
+      next: (res) => {
+        const downloadUrl = `http://localhost:8000/api/file-transfer/download/${res.filename}`;
+        window.open(downloadUrl, "_blank");
+        this.loading.set(false);
+        alert("Export successful! Download starting...");
+      },
+      error: (err) => {
+        console.error(err);
+        this.loading.set(false);
+        alert("Export failed. Check console for details.");
+      }
+    });
+  }
+  importData(event) {
+    const input2 = event.target;
+    if (input2.files && input2.files[0]) {
+      if (!confirm("Are you sure you want to import this backup? Current data will be overwritten.")) {
+        input2.value = "";
+        return;
+      }
+      this.loading.set(true);
+      const file = input2.files[0];
+      this.backupService.importData(file).subscribe({
+        next: (res) => {
+          const data = res.user_data;
+          if (data.backgroundImage)
+            localStorage.setItem("backgroundImage", data.backgroundImage);
+          if (data.backgroundColor)
+            localStorage.setItem("backgroundColor", data.backgroundColor);
+          if (data.backgroundType)
+            localStorage.setItem("backgroundType", data.backgroundType);
+          if (data.fileAssociations_v2)
+            localStorage.setItem("fileAssociations_v2", JSON.stringify(data.fileAssociations_v2));
+          if (data.fileAssociations_v2)
+            localStorage.setItem("fileAssociations_v2", data.fileAssociations_v2);
+          if (data.browserBookmarks)
+            localStorage.setItem("browserBookmarks", data.browserBookmarks);
+          this.loading.set(false);
+          alert("Import successful! The application will now reload to apply changes.");
+          window.location.reload();
+        },
+        error: (err) => {
+          console.error(err);
+          this.loading.set(false);
+          alert("Import failed. " + (err.error?.detail || err.message));
+        }
+      });
     }
   }
   static \u0275fac = function SettingsComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _SettingsComponent)();
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _SettingsComponent, selectors: [["app-settings"]], decls: 16, vars: 3, consts: [[1, "settings-container"], [1, "setting-group"], [1, "radio-group"], ["type", "radio", "name", "bgType", "value", "color", 3, "change", "checked"], ["type", "radio", "name", "bgType", "value", "image", 3, "change", "checked"], [1, "control-area"], [1, "color-picker"], [1, "image-uploader"], ["for", "bgColor"], ["type", "color", "id", "bgColor", 3, "input", "value"], ["for", "bgImage", 1, "upload-btn"], [1, "fa-solid", "fa-upload"], ["type", "file", "id", "bgImage", "accept", "image/*", "hidden", "", 3, "change"], [1, "preview"], ["alt", "Background Preview", 3, "src"]], template: function SettingsComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _SettingsComponent, selectors: [["app-settings"]], decls: 15, vars: 7, consts: [["fileInput", ""], [1, "settings-layout"], [1, "sidebar"], [1, "nav-item", 3, "click"], [1, "fa-solid", "fa-paintbrush"], [1, "fa-solid", "fa-rocket"], [1, "fa-solid", "fa-floppy-disk"], [1, "content"], [1, "settings-container"], [1, "setting-group"], [1, "radio-group"], ["type", "radio", "name", "bgType", "value", "color", 3, "change", "checked"], ["type", "radio", "name", "bgType", "value", "image", 3, "change", "checked"], [1, "control-area"], [1, "color-picker"], [1, "image-uploader"], ["for", "bgColor"], ["type", "color", "id", "bgColor", 3, "input", "value"], [1, "action-buttons"], ["for", "bgImage", 1, "upload-btn"], [1, "fa-solid", "fa-upload"], ["type", "file", "id", "bgImage", "accept", "image/*", "hidden", "", 3, "change"], [1, "upload-btn", "system-btn", 3, "click"], [1, "fa-solid", "fa-hard-drive"], [1, "wallpaper-grid"], [1, "preview"], [1, "wallpaper-item"], [1, "wallpaper-item", 3, "click"], [3, "src"], ["alt", "Background Preview", 3, "src"], [1, "desc"], [1, "action-btn", 3, "click", "disabled"], [1, "fa-solid", "fa-spinner", "fa-spin"], [1, "fa-solid", "fa-download"], [1, "setting-group", 2, "margin-top", "20px"], [1, "warning-box"], [1, "fa-solid", "fa-triangle-exclamation"], [1, "import-area"], ["type", "file", "accept", ".zip", "hidden", "", 3, "change"]], template: function SettingsComponent_Template(rf, ctx) {
     if (rf & 1) {
-      \u0275\u0275elementStart(0, "div", 0)(1, "h2");
-      \u0275\u0275text(2, "Personalization");
-      \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(3, "div", 1)(4, "h3");
-      \u0275\u0275text(5, "Background");
-      \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(6, "div", 2)(7, "label")(8, "input", 3);
-      \u0275\u0275listener("change", function SettingsComponent_Template_input_change_8_listener() {
-        return ctx.setType("color");
+      \u0275\u0275elementStart(0, "div", 1)(1, "div", 2)(2, "div", 3);
+      \u0275\u0275listener("click", function SettingsComponent_Template_div_click_2_listener() {
+        return ctx.activeTab.set("personalization");
       });
+      \u0275\u0275element(3, "i", 4);
+      \u0275\u0275text(4, " Personalization ");
       \u0275\u0275elementEnd();
-      \u0275\u0275text(9, " Solid Color ");
-      \u0275\u0275elementEnd();
-      \u0275\u0275elementStart(10, "label")(11, "input", 4);
-      \u0275\u0275listener("change", function SettingsComponent_Template_input_change_11_listener() {
-        return ctx.setType("image");
+      \u0275\u0275elementStart(5, "div", 3);
+      \u0275\u0275listener("click", function SettingsComponent_Template_div_click_5_listener() {
+        return ctx.activeTab.set("apps");
       });
+      \u0275\u0275element(6, "i", 5);
+      \u0275\u0275text(7, " Default Apps ");
       \u0275\u0275elementEnd();
-      \u0275\u0275text(12, " Image ");
+      \u0275\u0275elementStart(8, "div", 3);
+      \u0275\u0275listener("click", function SettingsComponent_Template_div_click_8_listener() {
+        return ctx.activeTab.set("backup");
+      });
+      \u0275\u0275element(9, "i", 6);
+      \u0275\u0275text(10, " Backup & Restore ");
       \u0275\u0275elementEnd()();
-      \u0275\u0275elementStart(13, "div", 5);
-      \u0275\u0275template(14, SettingsComponent_Conditional_14_Template, 4, 1, "div", 6)(15, SettingsComponent_Conditional_15_Template, 6, 1, "div", 7);
-      \u0275\u0275elementEnd()()();
+      \u0275\u0275elementStart(11, "div", 7);
+      \u0275\u0275template(12, SettingsComponent_Conditional_12_Template, 16, 3, "div", 8)(13, SettingsComponent_Conditional_13_Template, 1, 0, "app-default-program-settings")(14, SettingsComponent_Conditional_14_Template, 32, 4, "div", 8);
+      \u0275\u0275elementEnd()();
     }
     if (rf & 2) {
-      \u0275\u0275advance(8);
-      \u0275\u0275property("checked", ctx.settings.backgroundType() === "color");
+      \u0275\u0275advance(2);
+      \u0275\u0275classProp("active", ctx.activeTab() === "personalization");
       \u0275\u0275advance(3);
-      \u0275\u0275property("checked", ctx.settings.backgroundType() === "image");
+      \u0275\u0275classProp("active", ctx.activeTab() === "apps");
       \u0275\u0275advance(3);
-      \u0275\u0275conditional(ctx.settings.backgroundType() === "color" ? 14 : 15);
+      \u0275\u0275classProp("active", ctx.activeTab() === "backup");
+      \u0275\u0275advance(4);
+      \u0275\u0275conditional(ctx.activeTab() === "personalization" ? 12 : ctx.activeTab() === "apps" ? 13 : ctx.activeTab() === "backup" ? 14 : -1);
     }
-  }, dependencies: [CommonModule, FormsModule], styles: ["\n\n.settings-container[_ngcontent-%COMP%] {\n  padding: 20px;\n  color: #333;\n  height: 100%;\n  overflow-y: auto;\n}\nh2[_ngcontent-%COMP%] {\n  margin-top: 0;\n  border-bottom: 2px solid #eee;\n  padding-bottom: 10px;\n  margin-bottom: 20px;\n}\n.setting-group[_ngcontent-%COMP%] {\n  background: #f9f9f9;\n  padding: 15px;\n  border-radius: 8px;\n}\nh3[_ngcontent-%COMP%] {\n  margin-top: 0;\n  font-size: 1.1em;\n}\n.radio-group[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 20px;\n  margin-bottom: 15px;\n}\n.radio-group[_ngcontent-%COMP%]   label[_ngcontent-%COMP%] {\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n.control-area[_ngcontent-%COMP%] {\n  min-height: 100px;\n}\n.color-picker[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.upload-btn[_ngcontent-%COMP%] {\n  display: inline-block;\n  padding: 8px 16px;\n  background-color: #007bff;\n  color: white;\n  border-radius: 4px;\n  cursor: pointer;\n  transition: background-color 0.2s;\n}\n.upload-btn[_ngcontent-%COMP%]:hover {\n  background-color: #0056b3;\n}\n.preview[_ngcontent-%COMP%] {\n  margin-top: 15px;\n}\n.preview[_ngcontent-%COMP%]   img[_ngcontent-%COMP%] {\n  max-width: 200px;\n  max-height: 150px;\n  border-radius: 4px;\n  border: 1px solid #ddd;\n  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n}\n/*# sourceMappingURL=settings.component.css.map */"] });
+  }, dependencies: [CommonModule, FormsModule, DefaultProgramSettingsComponent], styles: ['\n\n.settings-layout[_ngcontent-%COMP%] {\n  display: flex;\n  height: 100%;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.sidebar[_ngcontent-%COMP%] {\n  width: 200px;\n  background: #252526;\n  border-right: 1px solid #333;\n  padding-top: 10px;\n}\n.nav-item[_ngcontent-%COMP%] {\n  padding: 10px 20px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  color: #aaa;\n}\n.nav-item[_ngcontent-%COMP%]:hover {\n  background: #2a2d2e;\n  color: #e0e0e0;\n}\n.nav-item.active[_ngcontent-%COMP%] {\n  background: #37373d;\n  color: white;\n  border-left: 3px solid #007fd4;\n}\n.content[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n  background: #1e1e1e;\n}\n.settings-container[_ngcontent-%COMP%] {\n  padding: 20px;\n}\nh2[_ngcontent-%COMP%] {\n  margin-top: 0;\n  border-bottom: 2px solid #333;\n  padding-bottom: 10px;\n  margin-bottom: 20px;\n  font-weight: normal;\n}\n.setting-group[_ngcontent-%COMP%] {\n  background: #252526;\n  padding: 15px;\n  border-radius: 4px;\n  border: 1px solid #333;\n}\nh3[_ngcontent-%COMP%] {\n  margin-top: 0;\n  font-size: 1.1em;\n  margin-bottom: 15px;\n}\n.radio-group[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 20px;\n  margin-bottom: 15px;\n}\n.radio-group[_ngcontent-%COMP%]   label[_ngcontent-%COMP%] {\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n.control-area[_ngcontent-%COMP%] {\n  min-height: 100px;\n}\n.color-picker[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.action-buttons[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 10px;\n  margin-bottom: 15px;\n}\n.upload-btn[_ngcontent-%COMP%] {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 16px;\n  background-color: #007fd4;\n  color: white;\n  border-radius: 4px;\n  cursor: pointer;\n  border: none;\n  font-size: 14px;\n  transition: background-color 0.2s;\n}\n.upload-btn[_ngcontent-%COMP%]:hover {\n  background-color: #0060a0;\n}\n.system-btn[_ngcontent-%COMP%] {\n  background-color: #3a3d41;\n}\n.system-btn[_ngcontent-%COMP%]:hover {\n  background-color: #505357;\n}\n.wallpaper-grid[_ngcontent-%COMP%] {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  gap: 10px;\n  margin-bottom: 15px;\n}\n.wallpaper-item[_ngcontent-%COMP%] {\n  aspect-ratio: 16/9;\n  cursor: pointer;\n  border: 2px solid transparent;\n  border-radius: 4px;\n  overflow: hidden;\n}\n.wallpaper-item[_ngcontent-%COMP%]:hover {\n  border-color: #555;\n}\n.wallpaper-item[_ngcontent-%COMP%]   img[_ngcontent-%COMP%] {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n}\n.wallpaper-item[_ngcontent-%COMP%]   img.selected[_ngcontent-%COMP%] {\n  border: 2px solid #007fd4;\n}\n.preview[_ngcontent-%COMP%] {\n  margin-top: 15px;\n  border-top: 1px solid #333;\n  padding-top: 10px;\n}\n.preview[_ngcontent-%COMP%]   img[_ngcontent-%COMP%] {\n  max-width: 300px;\n  max-height: 200px;\n  border-radius: 4px;\n  border: 1px solid #333;\n  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);\n}\n.desc[_ngcontent-%COMP%] {\n  color: #888;\n  font-size: 0.9rem;\n  margin-bottom: 20px;\n}\n.action-btn[_ngcontent-%COMP%] {\n  background-color: #007fd4;\n  color: white;\n  border: none;\n  padding: 10px 20px;\n  border-radius: 4px;\n  font-size: 1rem;\n  cursor: pointer;\n  display: inline-flex;\n  align-items: center;\n  gap: 10px;\n  transition: background 0.2s;\n}\n.action-btn[_ngcontent-%COMP%]:hover {\n  background-color: #0060a0;\n}\n.action-btn[_ngcontent-%COMP%]:disabled {\n  background-color: #555;\n  cursor: not-allowed;\n}\n.warning-box[_ngcontent-%COMP%] {\n  background: #3e3000;\n  border: 1px solid #7a6a00;\n  color: #ffda70;\n  padding: 10px;\n  border-radius: 4px;\n  margin-bottom: 15px;\n}\n.warning-box[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%] {\n  display: block;\n  margin-bottom: 5px;\n  color: #ffeb3b;\n}\n.warning-box[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=settings.component.css.map */'] });
 };
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(SettingsComponent, [{
     type: Component,
-    args: [{ selector: "app-settings", standalone: true, imports: [CommonModule, FormsModule], template: `
-    <div class="settings-container">
-      <h2>Personalization</h2>
-      
-      <div class="setting-group">
-        <h3>Background</h3>
+    args: [{ selector: "app-settings", standalone: true, imports: [CommonModule, FormsModule, DefaultProgramSettingsComponent], template: `
+    <div class="settings-layout">
+        <div class="sidebar">
+            <div class="nav-item" [class.active]="activeTab() === 'personalization'" (click)="activeTab.set('personalization')">
+                <i class="fa-solid fa-paintbrush"></i> Personalization
+            </div>
+            <div class="nav-item" [class.active]="activeTab() === 'apps'" (click)="activeTab.set('apps')">
+                <i class="fa-solid fa-rocket"></i> Default Apps
+            </div>
+            <div class="nav-item" [class.active]="activeTab() === 'backup'" (click)="activeTab.set('backup')">
+                <i class="fa-solid fa-floppy-disk"></i> Backup & Restore
+            </div>
+        </div>
         
-        <div class="radio-group">
-          <label>
-            <input type="radio" name="bgType" value="color" 
-                   [checked]="settings.backgroundType() === 'color'" 
-                   (change)="setType('color')">
-            Solid Color
-          </label>
-          <label>
-            <input type="radio" name="bgType" value="image" 
-                   [checked]="settings.backgroundType() === 'image'" 
-                   (change)="setType('image')">
-            Image
-          </label>
-        </div>
+        <div class="content">
+            @if (activeTab() === 'personalization') {
+                <div class="settings-container">
+                    <h2>Personalization</h2>
+                    
+                    <div class="setting-group">
+                        <h3>Background</h3>
+                        
+                        <div class="radio-group">
+                        <label>
+                            <input type="radio" name="bgType" value="color" 
+                                [checked]="settings.backgroundType() === 'color'" 
+                                (change)="setType('color')">
+                            Solid Color
+                        </label>
+                        <label>
+                            <input type="radio" name="bgType" value="image" 
+                                [checked]="settings.backgroundType() === 'image'" 
+                                (change)="setType('image')">
+                            Image
+                        </label>
+                        </div>
 
-        <div class="control-area">
-          @if (settings.backgroundType() === 'color') {
-            <div class="color-picker">
-              <label for="bgColor">Pick a color:</label>
-              <input type="color" id="bgColor" 
-                     [value]="settings.backgroundColor()" 
-                     (input)="onColorChange($event)">
-            </div>
-          } @else {
-            <div class="image-uploader">
-              <label for="bgImage" class="upload-btn">
-                <i class="fa-solid fa-upload"></i> Upload Image
-              </label>
-              <input type="file" id="bgImage" accept="image/*" (change)="onFileSelected($event)" hidden>
-              
-              @if (settings.backgroundImage()) {
-                <div class="preview">
-                  <p>Current Image:</p>
-                  <img [src]="settings.backgroundImage()" alt="Background Preview">
+                        <div class="control-area">
+                        @if (settings.backgroundType() === 'color') {
+                            <div class="color-picker">
+                            <label for="bgColor">Pick a color:</label>
+                            <input type="color" id="bgColor" 
+                                    [value]="settings.backgroundColor()" 
+                                    (input)="onColorChange($event)">
+                            </div>
+                        } @else {
+                            <div class="image-uploader">
+                                <div class="action-buttons">
+                                    <label for="bgImage" class="upload-btn">
+                                        <i class="fa-solid fa-upload"></i> Upload from Client
+                                    </label>
+                                    <input type="file" id="bgImage" accept="image/*" (change)="onFileSelected($event)" hidden>
+
+                                    <button class="upload-btn system-btn" (click)="openSystemFilePicker()">
+                                        <i class="fa-solid fa-hard-drive"></i> Select from System
+                                    </button>
+                                </div>
+                            
+                                @if (wallpapers().length > 0) {
+                                    <div class="wallpaper-grid">
+                                        @for (wp of wallpapers(); track wp) {
+                                            <div class="wallpaper-item" (click)="onWallpaperSelect(wp)">
+                                                <img [src]="wp" [class.selected]="settings.backgroundImage() === wp">
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (settings.backgroundImage()) {
+                                    <div class="preview">
+                                    <p>Current Selection:</p>
+                                    <img [src]="settings.backgroundImage()" alt="Background Preview">
+                                    </div>
+                                }
+                            </div>
+                        }
+                        </div>
+                    </div>
                 </div>
-              }
-            </div>
-          }
+            } @else if (activeTab() === 'apps') {
+                <app-default-program-settings></app-default-program-settings>
+            } @else if (activeTab() === 'backup') {
+                <div class="settings-container">
+                    <h2>Backup & Restore</h2>
+                    <p class="desc">Export your settings, wallpapers, extensions, and bookmarks to the host machine, or import them back.</p>
+
+                    <div class="setting-group">
+                        <h3>Export Data</h3>
+                        <p>Create a backup of your current configuration.</p>
+                        <button class="action-btn" (click)="exportData()" [disabled]="loading()">
+                            @if(loading()){ <i class="fa-solid fa-spinner fa-spin"></i> } @else { <i class="fa-solid fa-download"></i> } Export & Download
+                        </button>
+                    </div>
+
+                    <div class="setting-group" style="margin-top: 20px;">
+                        <h3>Import Data</h3>
+                         <div class="warning-box">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> Warning</strong>
+                            <p>Importing data will OVERWRITE your current settings, wallpapers, extensions, and bookmarks. This action cannot be undone.</p>
+                        </div>
+                        <p>Restore configuration from a previously exported backup.</p>
+                        
+                        <div class="import-area">
+                            <input type="file" #fileInput (change)="importData($event)" accept=".zip" hidden>
+                            <button class="action-btn" (click)="fileInput.click()" [disabled]="loading()">
+                                @if(loading()){ <i class="fa-solid fa-spinner fa-spin"></i> } @else { <i class="fa-solid fa-upload"></i> } Select Backup File
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
-      </div>
     </div>
-  `, styles: ["/* angular:styles/component:css;4a4b1af489ed521a0282dd18ab93e5c11269521f88ad826d6ba53741cb6a04a9;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/settings/settings.component.ts */\n.settings-container {\n  padding: 20px;\n  color: #333;\n  height: 100%;\n  overflow-y: auto;\n}\nh2 {\n  margin-top: 0;\n  border-bottom: 2px solid #eee;\n  padding-bottom: 10px;\n  margin-bottom: 20px;\n}\n.setting-group {\n  background: #f9f9f9;\n  padding: 15px;\n  border-radius: 8px;\n}\nh3 {\n  margin-top: 0;\n  font-size: 1.1em;\n}\n.radio-group {\n  display: flex;\n  gap: 20px;\n  margin-bottom: 15px;\n}\n.radio-group label {\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n.control-area {\n  min-height: 100px;\n}\n.color-picker {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.upload-btn {\n  display: inline-block;\n  padding: 8px 16px;\n  background-color: #007bff;\n  color: white;\n  border-radius: 4px;\n  cursor: pointer;\n  transition: background-color 0.2s;\n}\n.upload-btn:hover {\n  background-color: #0056b3;\n}\n.preview {\n  margin-top: 15px;\n}\n.preview img {\n  max-width: 200px;\n  max-height: 150px;\n  border-radius: 4px;\n  border: 1px solid #ddd;\n  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n}\n/*# sourceMappingURL=settings.component.css.map */\n"] }]
+  `, styles: ['/* angular:styles/component:css;03fb1e649a5644781d9a16d0d1c7aee74a73c735957565014a82195170dde95a;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/settings/settings.component.ts */\n.settings-layout {\n  display: flex;\n  height: 100%;\n  color: #e0e0e0;\n  font-family: "Segoe UI", sans-serif;\n}\n.sidebar {\n  width: 200px;\n  background: #252526;\n  border-right: 1px solid #333;\n  padding-top: 10px;\n}\n.nav-item {\n  padding: 10px 20px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  color: #aaa;\n}\n.nav-item:hover {\n  background: #2a2d2e;\n  color: #e0e0e0;\n}\n.nav-item.active {\n  background: #37373d;\n  color: white;\n  border-left: 3px solid #007fd4;\n}\n.content {\n  flex: 1;\n  overflow-y: auto;\n  background: #1e1e1e;\n}\n.settings-container {\n  padding: 20px;\n}\nh2 {\n  margin-top: 0;\n  border-bottom: 2px solid #333;\n  padding-bottom: 10px;\n  margin-bottom: 20px;\n  font-weight: normal;\n}\n.setting-group {\n  background: #252526;\n  padding: 15px;\n  border-radius: 4px;\n  border: 1px solid #333;\n}\nh3 {\n  margin-top: 0;\n  font-size: 1.1em;\n  margin-bottom: 15px;\n}\n.radio-group {\n  display: flex;\n  gap: 20px;\n  margin-bottom: 15px;\n}\n.radio-group label {\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n}\n.control-area {\n  min-height: 100px;\n}\n.color-picker {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.action-buttons {\n  display: flex;\n  gap: 10px;\n  margin-bottom: 15px;\n}\n.upload-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 16px;\n  background-color: #007fd4;\n  color: white;\n  border-radius: 4px;\n  cursor: pointer;\n  border: none;\n  font-size: 14px;\n  transition: background-color 0.2s;\n}\n.upload-btn:hover {\n  background-color: #0060a0;\n}\n.system-btn {\n  background-color: #3a3d41;\n}\n.system-btn:hover {\n  background-color: #505357;\n}\n.wallpaper-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));\n  gap: 10px;\n  margin-bottom: 15px;\n}\n.wallpaper-item {\n  aspect-ratio: 16/9;\n  cursor: pointer;\n  border: 2px solid transparent;\n  border-radius: 4px;\n  overflow: hidden;\n}\n.wallpaper-item:hover {\n  border-color: #555;\n}\n.wallpaper-item img {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n}\n.wallpaper-item img.selected {\n  border: 2px solid #007fd4;\n}\n.preview {\n  margin-top: 15px;\n  border-top: 1px solid #333;\n  padding-top: 10px;\n}\n.preview img {\n  max-width: 300px;\n  max-height: 200px;\n  border-radius: 4px;\n  border: 1px solid #333;\n  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);\n}\n.desc {\n  color: #888;\n  font-size: 0.9rem;\n  margin-bottom: 20px;\n}\n.action-btn {\n  background-color: #007fd4;\n  color: white;\n  border: none;\n  padding: 10px 20px;\n  border-radius: 4px;\n  font-size: 1rem;\n  cursor: pointer;\n  display: inline-flex;\n  align-items: center;\n  gap: 10px;\n  transition: background 0.2s;\n}\n.action-btn:hover {\n  background-color: #0060a0;\n}\n.action-btn:disabled {\n  background-color: #555;\n  cursor: not-allowed;\n}\n.warning-box {\n  background: #3e3000;\n  border: 1px solid #7a6a00;\n  color: #ffda70;\n  padding: 10px;\n  border-radius: 4px;\n  margin-bottom: 15px;\n}\n.warning-box strong {\n  display: block;\n  margin-bottom: 5px;\n  color: #ffeb3b;\n}\n.warning-box p {\n  margin: 0;\n  font-size: 0.9rem;\n}\n/*# sourceMappingURL=settings.component.css.map */\n'] }]
   }], null, null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(SettingsComponent, { className: "SettingsComponent", filePath: "src/app/components/apps/settings/settings.component.ts", lineNumber: 135 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(SettingsComponent, { className: "SettingsComponent", filePath: "src/app/components/apps/settings/settings.component.ts", lineNumber: 315 });
 })();
 
 // src/app/components/os/extension-loader/extension-loader.component.ts
-var _c03 = ["extFrame"];
+var _c04 = ["extFrame"];
 var ExtensionLoaderComponent = class _ExtensionLoaderComponent {
   url;
   extId;
+  initialFileName;
+  currentPath;
   extFrame;
   safeUrl;
   sanitizer = inject(DomSanitizer);
   fs = inject(FileSystemService);
   wm = inject(WindowManagerService);
   messageListener;
+  frameLoaded = false;
   ngOnInit() {
+    console.log("ExtensionLoader Init. Inputs:", {
+      url: this.url,
+      id: this.extId,
+      file: this.initialFileName,
+      path: this.currentPath
+    });
     const backendBase = "http://localhost:8000";
     const fullUrl = this.url.startsWith("http") ? this.url : `${backendBase}${this.url}`;
     this.safeUrl = this.sanitizer.bypassSecurityTrustResourceUrl(fullUrl);
     this.messageListener = this.handleMessage.bind(this);
     window.addEventListener("message", this.messageListener);
+  }
+  // Listen for iframe load to send initial file
+  onFrameLoad() {
+    console.log("ExtensionLoader Iframe Loaded");
+    this.frameLoaded = true;
+    if (this.initialFileName && this.currentPath) {
+      console.log("Sending initial file to extension");
+      setTimeout(() => {
+        this.openFile(this.currentPath, this.initialFileName);
+      }, 500);
+    }
+  }
+  openFile(path, filename) {
+    this.sendToExtension({
+      action: "OPEN_FILE",
+      payload: {
+        path,
+        filename
+      }
+    });
+  }
+  sendToExtension(message) {
+    if (!this.extFrame?.nativeElement?.contentWindow)
+      return;
+    this.extFrame.nativeElement.contentWindow.postMessage(message, "*");
   }
   ngOnDestroy() {
     if (this.messageListener) {
@@ -26499,17 +28460,21 @@ var ExtensionLoaderComponent = class _ExtensionLoaderComponent {
   };
   static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ExtensionLoaderComponent, selectors: [["app-extension-loader"]], viewQuery: function ExtensionLoaderComponent_Query(rf, ctx) {
     if (rf & 1) {
-      \u0275\u0275viewQuery(_c03, 5);
+      \u0275\u0275viewQuery(_c04, 5);
     }
     if (rf & 2) {
       let _t2;
       \u0275\u0275queryRefresh(_t2 = \u0275\u0275loadQuery()) && (ctx.extFrame = _t2.first);
     }
-  }, inputs: { url: "url", extId: "extId" }, decls: 3, vars: 1, consts: [["extFrame", ""], [1, "extension-frame-wrapper"], ["frameborder", "0", "sandbox", "allow-scripts allow-same-origin allow-forms allow-popups", 3, "src"]], template: function ExtensionLoaderComponent_Template(rf, ctx) {
+  }, inputs: { url: "url", extId: "extId", initialFileName: "initialFileName", currentPath: "currentPath" }, decls: 3, vars: 1, consts: [["extFrame", ""], [1, "extension-frame-wrapper"], ["frameborder", "0", "sandbox", "allow-scripts allow-same-origin allow-forms allow-popups", 3, "load", "src"]], template: function ExtensionLoaderComponent_Template(rf, ctx) {
     if (rf & 1) {
-      \u0275\u0275elementStart(0, "div", 1);
-      \u0275\u0275element(1, "iframe", 2, 0);
-      \u0275\u0275elementEnd();
+      const _r1 = \u0275\u0275getCurrentView();
+      \u0275\u0275elementStart(0, "div", 1)(1, "iframe", 2, 0);
+      \u0275\u0275listener("load", function ExtensionLoaderComponent_Template_iframe_load_1_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onFrameLoad());
+      });
+      \u0275\u0275elementEnd()();
     }
     if (rf & 2) {
       \u0275\u0275advance();
@@ -26525,6 +28490,7 @@ var ExtensionLoaderComponent = class _ExtensionLoaderComponent {
       <iframe 
         #extFrame 
         [src]="safeUrl" 
+        (load)="onFrameLoad()"
         frameborder="0" 
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
       </iframe>
@@ -26534,13 +28500,68 @@ var ExtensionLoaderComponent = class _ExtensionLoaderComponent {
     type: Input
   }], extId: [{
     type: Input
+  }], initialFileName: [{
+    type: Input
+  }], currentPath: [{
+    type: Input
   }], extFrame: [{
     type: ViewChild,
     args: ["extFrame"]
   }] });
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ExtensionLoaderComponent, { className: "ExtensionLoaderComponent", filePath: "src/app/components/os/extension-loader/extension-loader.component.ts", lineNumber: 27 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ExtensionLoaderComponent, { className: "ExtensionLoaderComponent", filePath: "src/app/components/os/extension-loader/extension-loader.component.ts", lineNumber: 28 });
+})();
+
+// src/app/services/extension.service.ts
+var ExtensionService = class _ExtensionService {
+  http = inject(HttpClient);
+  registry = inject(AppRegistryService);
+  apiUrl = "http://localhost:8000/api/extensions";
+  loadExtensions() {
+    this.refresh();
+  }
+  refresh() {
+    this.http.get(`${this.apiUrl}/list`).subscribe({
+      next: (extensions) => {
+        const currentExtIds = new Set(extensions.map((e) => e.id));
+        const registeredApps = this.registry.getAllApps();
+        registeredApps.forEach((app) => {
+          if (app.component === ExtensionLoaderComponent && !currentExtIds.has(app.id)) {
+            this.registry.unregisterApp(app.id);
+          }
+        });
+        extensions.forEach((ext) => {
+          this.registry.registerApp({
+            id: ext.id,
+            name: ext.name,
+            component: ExtensionLoaderComponent,
+            icon: ext.icon || "fa-solid fa-puzzle-piece",
+            // Logic: If IsFileHandler is set, use AssociatedFileExtensions or supports
+            supports: ext.AssociatedFileExtensions || ext.supports || [],
+            isFileHandler: ext.IsFileHandler || false,
+            defaultInputs: {
+              url: ext.url,
+              extId: ext.id
+            }
+          });
+        });
+      },
+      error: (err) => console.error("Failed to load extensions", err)
+    });
+  }
+  static \u0275fac = function ExtensionService_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _ExtensionService)();
+  };
+  static \u0275prov = /* @__PURE__ */ \u0275\u0275defineInjectable({ token: _ExtensionService, factory: _ExtensionService.\u0275fac, providedIn: "root" });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ExtensionService, [{
+    type: Injectable,
+    args: [{
+      providedIn: "root"
+    }]
+  }], null, null);
 })();
 
 // src/app/components/apps/extension-manager/extension-manager.component.ts
@@ -26563,6 +28584,14 @@ function ExtensionManagerComponent_div_11_Template(rf, ctx) {
       return \u0275\u0275resetView(ctx_r4.launch(ext_r4));
     });
     \u0275\u0275text(10, "Launch");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(11, "button", 12);
+    \u0275\u0275listener("click", function ExtensionManagerComponent_div_11_Template_button_click_11_listener() {
+      const ext_r4 = \u0275\u0275restoreView(_r3).$implicit;
+      const ctx_r4 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r4.removeExtension(ext_r4.id));
+    });
+    \u0275\u0275text(12, "Remove");
     \u0275\u0275elementEnd()()();
   }
   if (rf & 2) {
@@ -26577,7 +28606,7 @@ function ExtensionManagerComponent_div_11_Template(rf, ctx) {
 }
 function ExtensionManagerComponent_div_12_Template(rf, ctx) {
   if (rf & 1) {
-    \u0275\u0275elementStart(0, "div", 12);
+    \u0275\u0275elementStart(0, "div", 13);
     \u0275\u0275text(1, " No extensions installed. Upload a .zip file to get started. ");
     \u0275\u0275elementEnd();
   }
@@ -26586,9 +28615,11 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
   extensions = [];
   http = inject(HttpClient);
   wm = inject(WindowManagerService);
+  extService = inject(ExtensionService);
   apiUrl = "http://localhost:8000/api/extensions";
   ngOnInit() {
     this.loadExtensions();
+    this.extService.refresh();
   }
   loadExtensions() {
     this.http.get(`${this.apiUrl}/list`).subscribe((data) => {
@@ -26605,6 +28636,7 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
       next: (res) => {
         alert("Extension installed!");
         this.loadExtensions();
+        this.extService.refresh();
       },
       error: (err) => {
         alert("Failed to install: " + err.error?.detail || err.message);
@@ -26612,20 +28644,25 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
     });
   }
   launch(ext) {
-    this.wm.openApp(
-      ext.id,
-      ExtensionLoaderComponent,
-      ext.name,
-      ext.icon || "fa-solid fa-puzzle-piece",
-      { url: ext.url, extId: ext.id },
-      // Correctly pass inputs
-      ext.defaultSize ? ext.defaultSize : { width: 800, height: 600 }
-    );
+    this.wm.openApp(ext.id, ExtensionLoaderComponent, ext.name, ext.icon || "fa-solid fa-puzzle-piece", { url: ext.url, extId: ext.id }, ext.defaultSize ? ext.defaultSize : { width: 800, height: 600 });
+  }
+  removeExtension(id) {
+    if (confirm("Are you sure you want to remove this extension?")) {
+      this.http.delete(`${this.apiUrl}/${id}`).subscribe({
+        next: () => {
+          this.loadExtensions();
+          this.extService.refresh();
+        },
+        error: (err) => {
+          alert("Failed to remove extension: " + (err.error?.detail || err.message));
+        }
+      });
+    }
   }
   static \u0275fac = function ExtensionManagerComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _ExtensionManagerComponent)();
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ExtensionManagerComponent, selectors: [["app-extension-manager"]], decls: 13, vars: 2, consts: [["fileInput", ""], [1, "extension-manager"], [1, "toolbar"], ["type", "file", "accept", ".zip", 2, "display", "none", 3, "change"], [3, "click"], [1, "extension-list"], ["class", "extension-item", 4, "ngFor", "ngForOf"], ["class", "no-extensions", 4, "ngIf"], [1, "extension-item"], [1, "icon"], [1, "details"], [1, "actions"], [1, "no-extensions"]], template: function ExtensionManagerComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ExtensionManagerComponent, selectors: [["app-extension-manager"]], decls: 13, vars: 2, consts: [["fileInput", ""], [1, "extension-manager"], [1, "toolbar"], ["type", "file", "accept", ".zip", 2, "display", "none", 3, "change"], [3, "click"], [1, "extension-list"], ["class", "extension-item", 4, "ngFor", "ngForOf"], ["class", "no-extensions", 4, "ngIf"], [1, "extension-item"], [1, "icon"], [1, "details"], [1, "actions"], [1, "remove-btn", 3, "click"], [1, "no-extensions"]], template: function ExtensionManagerComponent_Template(rf, ctx) {
     if (rf & 1) {
       const _r1 = \u0275\u0275getCurrentView();
       \u0275\u0275elementStart(0, "div", 1)(1, "div", 2)(2, "h3");
@@ -26653,7 +28690,7 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
       \u0275\u0275text(9, "Refresh");
       \u0275\u0275elementEnd()();
       \u0275\u0275elementStart(10, "div", 5);
-      \u0275\u0275template(11, ExtensionManagerComponent_div_11_Template, 11, 5, "div", 6)(12, ExtensionManagerComponent_div_12_Template, 2, 0, "div", 7);
+      \u0275\u0275template(11, ExtensionManagerComponent_div_11_Template, 13, 5, "div", 6)(12, ExtensionManagerComponent_div_12_Template, 2, 0, "div", 7);
       \u0275\u0275elementEnd()();
     }
     if (rf & 2) {
@@ -26662,7 +28699,7 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
       \u0275\u0275advance();
       \u0275\u0275property("ngIf", ctx.extensions.length === 0);
     }
-  }, dependencies: [CommonModule, NgForOf, NgIf], styles: ["\n\n.extension-manager[_ngcontent-%COMP%] {\n  padding: 20px;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  box-sizing: border-box;\n}\n.toolbar[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin-bottom: 20px;\n  padding-bottom: 10px;\n  border-bottom: 1px solid #ccc;\n}\n.toolbar[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%] {\n  margin: 0;\n  flex-grow: 1;\n}\n.extension-list[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.extension-item[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 15px;\n  padding: 10px;\n  background: #2b2b2b;\n  border-radius: 8px;\n  border: 1px solid #3e3e3e;\n  color: #eee;\n}\n.icon[_ngcontent-%COMP%] {\n  font-size: 24px;\n  width: 40px;\n  text-align: center;\n  color: #eee;\n}\n.details[_ngcontent-%COMP%] {\n  flex-grow: 1;\n}\n.details[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%] {\n  margin: 0 0 5px 0;\n  color: #fff;\n}\n.details[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  font-size: 12px;\n  color: #aaa;\n}\nbutton[_ngcontent-%COMP%] {\n  padding: 8px 12px;\n  cursor: pointer;\n  background: #007bff;\n  color: white;\n  border: none;\n  border-radius: 4px;\n}\nbutton[_ngcontent-%COMP%]:hover {\n  background: #0056b3;\n}\n/*# sourceMappingURL=extension-manager.component.css.map */"] });
+  }, dependencies: [CommonModule, NgForOf, NgIf], styles: ["\n\n.extension-manager[_ngcontent-%COMP%] {\n  padding: 20px;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  box-sizing: border-box;\n}\n.toolbar[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin-bottom: 20px;\n  padding-bottom: 10px;\n  border-bottom: 1px solid #ccc;\n}\n.toolbar[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%] {\n  margin: 0;\n  flex-grow: 1;\n}\n.extension-list[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.extension-item[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 15px;\n  padding: 10px;\n  background: #2b2b2b;\n  border-radius: 8px;\n  border: 1px solid #3e3e3e;\n  color: #eee;\n}\n.icon[_ngcontent-%COMP%] {\n  font-size: 24px;\n  width: 40px;\n  text-align: center;\n  color: #eee;\n}\n.details[_ngcontent-%COMP%] {\n  flex-grow: 1;\n}\n.details[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%] {\n  margin: 0 0 5px 0;\n  color: #fff;\n}\n.details[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n  font-size: 12px;\n  color: #aaa;\n}\nbutton[_ngcontent-%COMP%] {\n  padding: 8px 12px;\n  cursor: pointer;\n  background: #007bff;\n  color: white;\n  border: none;\n  border-radius: 4px;\n}\nbutton[_ngcontent-%COMP%]:hover {\n  background: #0056b3;\n}\n.remove-btn[_ngcontent-%COMP%] {\n  background: #dc3545;\n  margin-left: 5px;\n}\n.remove-btn[_ngcontent-%COMP%]:hover {\n  background: #bd2130;\n}\n/*# sourceMappingURL=extension-manager.component.css.map */"] });
 };
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ExtensionManagerComponent, [{
@@ -26687,6 +28724,7 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
           </div>
           <div class="actions">
             <button (click)="launch(ext)">Launch</button>
+            <button class="remove-btn" (click)="removeExtension(ext.id)">Remove</button>
           </div>
         </div>
         
@@ -26695,15 +28733,569 @@ var ExtensionManagerComponent = class _ExtensionManagerComponent {
         </div>
       </div>
     </div>
-  `, styles: ["/* angular:styles/component:css;3b8dda718bb8111e2526531e5df78dc38ae785ed56992a86a7287113e7391c53;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/extension-manager/extension-manager.component.ts */\n.extension-manager {\n  padding: 20px;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  box-sizing: border-box;\n}\n.toolbar {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin-bottom: 20px;\n  padding-bottom: 10px;\n  border-bottom: 1px solid #ccc;\n}\n.toolbar h3 {\n  margin: 0;\n  flex-grow: 1;\n}\n.extension-list {\n  flex: 1;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.extension-item {\n  display: flex;\n  align-items: center;\n  gap: 15px;\n  padding: 10px;\n  background: #2b2b2b;\n  border-radius: 8px;\n  border: 1px solid #3e3e3e;\n  color: #eee;\n}\n.icon {\n  font-size: 24px;\n  width: 40px;\n  text-align: center;\n  color: #eee;\n}\n.details {\n  flex-grow: 1;\n}\n.details h4 {\n  margin: 0 0 5px 0;\n  color: #fff;\n}\n.details p {\n  margin: 0;\n  font-size: 12px;\n  color: #aaa;\n}\nbutton {\n  padding: 8px 12px;\n  cursor: pointer;\n  background: #007bff;\n  color: white;\n  border: none;\n  border-radius: 4px;\n}\nbutton:hover {\n  background: #0056b3;\n}\n/*# sourceMappingURL=extension-manager.component.css.map */\n"] }]
+  `, styles: ["/* angular:styles/component:css;cea1536c665f21c2b81adbe42cfdd98d4a8e120cc393b37c4bf549837e265e1b;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/extension-manager/extension-manager.component.ts */\n.extension-manager {\n  padding: 20px;\n  height: 100%;\n  display: flex;\n  flex-direction: column;\n  box-sizing: border-box;\n}\n.toolbar {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  margin-bottom: 20px;\n  padding-bottom: 10px;\n  border-bottom: 1px solid #ccc;\n}\n.toolbar h3 {\n  margin: 0;\n  flex-grow: 1;\n}\n.extension-list {\n  flex: 1;\n  overflow-y: auto;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n}\n.extension-item {\n  display: flex;\n  align-items: center;\n  gap: 15px;\n  padding: 10px;\n  background: #2b2b2b;\n  border-radius: 8px;\n  border: 1px solid #3e3e3e;\n  color: #eee;\n}\n.icon {\n  font-size: 24px;\n  width: 40px;\n  text-align: center;\n  color: #eee;\n}\n.details {\n  flex-grow: 1;\n}\n.details h4 {\n  margin: 0 0 5px 0;\n  color: #fff;\n}\n.details p {\n  margin: 0;\n  font-size: 12px;\n  color: #aaa;\n}\nbutton {\n  padding: 8px 12px;\n  cursor: pointer;\n  background: #007bff;\n  color: white;\n  border: none;\n  border-radius: 4px;\n}\nbutton:hover {\n  background: #0056b3;\n}\n.remove-btn {\n  background: #dc3545;\n  margin-left: 5px;\n}\n.remove-btn:hover {\n  background: #bd2130;\n}\n/*# sourceMappingURL=extension-manager.component.css.map */\n"] }]
   }], null, null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ExtensionManagerComponent, { className: "ExtensionManagerComponent", filePath: "src/app/components/apps/extension-manager/extension-manager.component.ts", lineNumber: 74 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ExtensionManagerComponent, { className: "ExtensionManagerComponent", filePath: "src/app/components/apps/extension-manager/extension-manager.component.ts", lineNumber: 78 });
+})();
+
+// src/app/components/apps/image-viewer/image-viewer.component.ts
+var _c05 = ["canvas"];
+function ImageViewerComponent_Conditional_27_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r2 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 25)(1, "div", 34)(2, "label");
+    \u0275\u0275text(3, "Width:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(4, "input", 35);
+    \u0275\u0275twoWayListener("ngModelChange", function ImageViewerComponent_Conditional_27_Template_input_ngModelChange_4_listener($event) {
+      \u0275\u0275restoreView(_r2);
+      const ctx_r2 = \u0275\u0275nextContext();
+      \u0275\u0275twoWayBindingSet(ctx_r2.resizeWidth, $event) || (ctx_r2.resizeWidth = $event);
+      return \u0275\u0275resetView($event);
+    });
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(5, "div", 34)(6, "label");
+    \u0275\u0275text(7, "Height:");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(8, "input", 35);
+    \u0275\u0275twoWayListener("ngModelChange", function ImageViewerComponent_Conditional_27_Template_input_ngModelChange_8_listener($event) {
+      \u0275\u0275restoreView(_r2);
+      const ctx_r2 = \u0275\u0275nextContext();
+      \u0275\u0275twoWayBindingSet(ctx_r2.resizeHeight, $event) || (ctx_r2.resizeHeight = $event);
+      return \u0275\u0275resetView($event);
+    });
+    \u0275\u0275elementEnd()();
+    \u0275\u0275elementStart(9, "button", 36);
+    \u0275\u0275listener("click", function ImageViewerComponent_Conditional_27_Template_button_click_9_listener() {
+      \u0275\u0275restoreView(_r2);
+      const ctx_r2 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r2.applyResize());
+    });
+    \u0275\u0275text(10, "Apply");
+    \u0275\u0275elementEnd()();
+  }
+  if (rf & 2) {
+    const ctx_r2 = \u0275\u0275nextContext();
+    \u0275\u0275advance(4);
+    \u0275\u0275twoWayProperty("ngModel", ctx_r2.resizeWidth);
+    \u0275\u0275advance(4);
+    \u0275\u0275twoWayProperty("ngModel", ctx_r2.resizeHeight);
+  }
+}
+function ImageViewerComponent_Conditional_28_Template(rf, ctx) {
+  if (rf & 1) {
+    const _r4 = \u0275\u0275getCurrentView();
+    \u0275\u0275elementStart(0, "div", 26)(1, "span");
+    \u0275\u0275text(2, "Select area to crop");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(3, "button", 36);
+    \u0275\u0275listener("click", function ImageViewerComponent_Conditional_28_Template_button_click_3_listener() {
+      \u0275\u0275restoreView(_r4);
+      const ctx_r2 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r2.applyCrop());
+    });
+    \u0275\u0275text(4, "Apply Crop");
+    \u0275\u0275elementEnd();
+    \u0275\u0275elementStart(5, "button", 37);
+    \u0275\u0275listener("click", function ImageViewerComponent_Conditional_28_Template_button_click_5_listener() {
+      \u0275\u0275restoreView(_r4);
+      const ctx_r2 = \u0275\u0275nextContext();
+      return \u0275\u0275resetView(ctx_r2.cancelCrop());
+    });
+    \u0275\u0275text(6, "Cancel");
+    \u0275\u0275elementEnd()();
+  }
+}
+function ImageViewerComponent_Conditional_34_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275element(0, "div", 38);
+  }
+  if (rf & 2) {
+    const ctx_r2 = \u0275\u0275nextContext();
+    \u0275\u0275styleProp("left", ctx_r2.selectionRect.x, "px")("top", ctx_r2.selectionRect.y, "px")("width", ctx_r2.selectionRect.w, "px")("height", ctx_r2.selectionRect.h, "px");
+  }
+}
+function ImageViewerComponent_Conditional_35_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 31);
+    \u0275\u0275text(1, "Loading image...");
+    \u0275\u0275elementEnd();
+  }
+}
+function ImageViewerComponent_Conditional_36_Template(rf, ctx) {
+  if (rf & 1) {
+    \u0275\u0275elementStart(0, "div", 32);
+    \u0275\u0275text(1, "Failed to load image");
+    \u0275\u0275elementEnd();
+  }
+}
+var ImageViewerComponent = class _ImageViewerComponent {
+  initialFileName = "";
+  currentPath = [];
+  canvasRef;
+  fs = inject(FileSystemService);
+  wm = inject(WindowManagerService);
+  fileName = signal("");
+  activePath = signal(null);
+  loading = signal(false);
+  error = signal(false);
+  zoomLevel = signal(1);
+  imageDimensions = signal({ width: 0, height: 0 });
+  // Resize State
+  showResizePanel = signal(false);
+  resizeWidth = 0;
+  resizeHeight = 0;
+  // Crop State
+  isCropping = signal(false);
+  isSelecting = false;
+  selectionRaw = { startX: 0, startY: 0, currX: 0, currY: 0 };
+  get selectionRect() {
+    if (!this.isSelecting && this.selectionRaw.currX === 0)
+      return null;
+    const x = Math.min(this.selectionRaw.startX, this.selectionRaw.currX);
+    const y = Math.min(this.selectionRaw.startY, this.selectionRaw.currY);
+    const w = Math.abs(this.selectionRaw.currX - this.selectionRaw.startX);
+    const h2 = Math.abs(this.selectionRaw.currY - this.selectionRaw.startY);
+    return { x, y, w, h: h2 };
+  }
+  originalImage = null;
+  ctx;
+  ngOnInit() {
+    this.fileName.set(this.initialFileName);
+    this.activePath.set(this.currentPath);
+    this.loadImage();
+  }
+  ngAfterViewInit() {
+  }
+  loadImage() {
+    if (!this.fileName())
+      return;
+    this.loading.set(true);
+    this.error.set(false);
+    this.fs.getFileProperties(this.activePath() || [], this.fileName(), "file").subscribe({
+      next: (props) => {
+        if (props && props.path) {
+          const img = new Image();
+          img.crossOrigin = "Anonymous";
+          img.onload = () => {
+            this.originalImage = img;
+            this.imageDimensions.set({ width: img.width, height: img.height });
+            this.resizeWidth = img.width;
+            this.resizeHeight = img.height;
+            this.renderImage();
+            this.loading.set(false);
+          };
+          img.onerror = () => {
+            this.error.set(true);
+            this.loading.set(false);
+          };
+          const apiUrl = "http://localhost:8000";
+          const encodedPath = encodeURIComponent(props.path);
+          img.src = `${apiUrl}/api/filesystem/serve?path=${encodedPath}`;
+        } else {
+          this.error.set(true);
+          this.loading.set(false);
+        }
+      },
+      error: () => {
+        this.error.set(true);
+        this.loading.set(false);
+      }
+    });
+  }
+  renderImage(imgSource = this.originalImage) {
+    if (!imgSource || !this.canvasRef)
+      return;
+    const canvas = this.canvasRef.nativeElement;
+    this.ctx = canvas.getContext("2d");
+    canvas.width = imgSource.width;
+    canvas.height = imgSource.height;
+    this.ctx.drawImage(imgSource, 0, 0);
+    this.imageDimensions.set({ width: canvas.width, height: canvas.height });
+  }
+  // File Operations
+  openFile() {
+    return __async(this, null, function* () {
+      const result = yield this.wm.openFileDialog({
+        mode: "open",
+        filters: ["png", "jpg", "jpeg", "webp"],
+        initialPath: this.activePath() || []
+      });
+      if (result) {
+        this.activePath.set(result.path);
+        this.fileName.set(result.fileName);
+        this.loadImage();
+      }
+    });
+  }
+  saveFile() {
+    if (this.activePath() && this.fileName()) {
+      this.saveToPath(this.activePath(), this.fileName());
+    } else {
+      this.saveAs();
+    }
+  }
+  saveAs() {
+    return __async(this, null, function* () {
+      const result = yield this.wm.openFileDialog({
+        mode: "save",
+        defaultFileName: this.fileName() || "image.png",
+        initialPath: this.activePath() || []
+      });
+      if (result) {
+        this.saveToPath(result.path, result.fileName);
+      }
+    });
+  }
+  saveToPath(path, fileName) {
+    if (!this.canvasRef)
+      return;
+    const canvas = this.canvasRef.nativeElement;
+    const dataUrl = canvas.toDataURL("image/png");
+    this.fs.getFileProperties(path, fileName, "file").subscribe({
+      next: (props) => {
+        this.fs.getFileProperties(path, "", "folder").subscribe((parentProps) => {
+          if (parentProps && parentProps.path) {
+            const separator = parentProps.path.includes("/") ? "/" : "\\";
+            const fullPath = parentProps.path + separator + fileName;
+            this.fs.saveImage(fullPath, dataUrl).subscribe({
+              next: () => {
+                this.fileName.set(fileName);
+                this.activePath.set(path);
+                alert("Image Saved!");
+              },
+              error: (err) => console.error(err)
+            });
+          }
+        });
+      },
+      error: () => {
+        this.fs.getFileProperties(path, "", "folder").subscribe((parentProps) => {
+          if (parentProps && parentProps.path) {
+            const separator = parentProps.path.includes("/") ? "/" : "\\";
+            const fullPath = parentProps.path + separator + fileName;
+            this.fs.saveImage(fullPath, dataUrl).subscribe({
+              next: () => {
+                this.fileName.set(fileName);
+                this.activePath.set(path);
+                alert("Image Saved!");
+              },
+              error: (err) => console.error(err)
+            });
+          }
+        });
+      }
+    });
+  }
+  // Zoom
+  zoomIn() {
+    this.zoomLevel.update((v2) => Math.min(v2 + 0.5, 5));
+  }
+  zoomOut() {
+    this.zoomLevel.update((v2) => Math.max(v2 - 0.5, 0.5));
+  }
+  resetZoom() {
+    this.zoomLevel.set(1);
+  }
+  // Resize
+  toggleResize() {
+    this.cancelCrop();
+    this.showResizePanel.update((v2) => !v2);
+  }
+  applyResize() {
+    if (!this.canvasRef || !this.resizeWidth || !this.resizeHeight)
+      return;
+    const canvas = this.canvasRef.nativeElement;
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = this.resizeWidth;
+    tempCanvas.height = this.resizeHeight;
+    const tCtx = tempCanvas.getContext("2d");
+    tCtx.drawImage(canvas, 0, 0, this.resizeWidth, this.resizeHeight);
+    this.renderImage(tempCanvas);
+    this.showResizePanel.set(false);
+  }
+  // Crop
+  toggleCrop() {
+    this.showResizePanel.set(false);
+    this.isCropping.update((v2) => !v2);
+    this.selectionRaw = { startX: 0, startY: 0, currX: 0, currY: 0 };
+  }
+  cancelCrop() {
+    this.isCropping.set(false);
+    this.selectionRaw = { startX: 0, startY: 0, currX: 0, currY: 0 };
+  }
+  applyCrop() {
+    const rect = this.selectionRect;
+    if (!rect || rect.w < 1 || rect.h < 1 || !this.canvasRef)
+      return;
+    const canvas = this.canvasRef.nativeElement;
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = rect.w;
+    tempCanvas.height = rect.h;
+    const tCtx = tempCanvas.getContext("2d");
+    tCtx.drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+    this.renderImage(tempCanvas);
+    this.cancelCrop();
+  }
+  // Mouse Events for Cropping
+  onMouseDown(e) {
+    if (!this.isCropping())
+      return;
+    e.preventDefault();
+    this.isSelecting = true;
+    const { x, y } = this.getMousePos(e);
+    this.selectionRaw = { startX: x, startY: y, currX: x, currY: y };
+  }
+  onMouseMove(e) {
+    if (!this.isCropping() || !this.isSelecting)
+      return;
+    const { x, y } = this.getMousePos(e);
+    this.selectionRaw.currX = x;
+    this.selectionRaw.currY = y;
+  }
+  onMouseUp(e) {
+    if (!this.isCropping())
+      return;
+    this.isSelecting = false;
+  }
+  getMousePos(e) {
+    if (!this.canvasRef)
+      return { x: 0, y: 0 };
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    const scale = this.zoomLevel();
+    const x = (e.clientX - rect.left) / scale;
+    const scaleX = this.canvasRef.nativeElement.width / rect.width;
+    const scaleY = this.canvasRef.nativeElement.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  }
+  static \u0275fac = function ImageViewerComponent_Factory(__ngFactoryType__) {
+    return new (__ngFactoryType__ || _ImageViewerComponent)();
+  };
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _ImageViewerComponent, selectors: [["app-image-viewer"]], viewQuery: function ImageViewerComponent_Query(rf, ctx) {
+    if (rf & 1) {
+      \u0275\u0275viewQuery(_c05, 5);
+    }
+    if (rf & 2) {
+      let _t2;
+      \u0275\u0275queryRefresh(_t2 = \u0275\u0275loadQuery()) && (ctx.canvasRef = _t2.first);
+    }
+  }, inputs: { initialFileName: "initialFileName", currentPath: "currentPath" }, decls: 40, vars: 20, consts: [["scrollContainer", ""], ["canvas", ""], [1, "viewer-container"], [1, "toolbar"], [1, "file-ops"], ["title", "Open", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-folder-open"], ["title", "Save", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-floppy-disk"], ["title", "Save As", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-file-export"], [1, "divider"], [1, "view-ops"], ["title", "Zoom In", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-magnifying-glass-plus"], ["title", "Zoom Out", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-magnifying-glass-minus"], ["title", "Reset Zoom", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-compress"], [1, "edit-ops"], ["title", "Resize", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-expand"], ["title", "Crop", 1, "tool-btn", 3, "click"], [1, "fa-solid", "fa-crop"], [1, "filename"], [1, "resize-panel"], [1, "crop-toolbar"], [1, "image-area"], [1, "canvas-wrapper"], [3, "mousedown", "mousemove", "mouseup", "mouseleave"], [1, "selection-rect", 3, "left", "top", "width", "height"], [1, "loading"], [1, "error-msg"], [1, "status-bar"], [1, "input-group"], ["type", "number", 3, "ngModelChange", "ngModel"], [1, "btn-apply", 3, "click"], [1, "btn-cancel", 3, "click"], [1, "selection-rect"]], template: function ImageViewerComponent_Template(rf, ctx) {
+    if (rf & 1) {
+      const _r1 = \u0275\u0275getCurrentView();
+      \u0275\u0275elementStart(0, "div", 2)(1, "div", 3)(2, "div", 4)(3, "button", 5);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_3_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.openFile());
+      });
+      \u0275\u0275element(4, "i", 6);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(5, "button", 7);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_5_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.saveFile());
+      });
+      \u0275\u0275element(6, "i", 8);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(7, "button", 9);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_7_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.saveAs());
+      });
+      \u0275\u0275element(8, "i", 10);
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(9, "span", 11);
+      \u0275\u0275text(10, "|");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(11, "div", 12)(12, "button", 13);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_12_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.zoomIn());
+      });
+      \u0275\u0275element(13, "i", 14);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(14, "button", 15);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_14_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.zoomOut());
+      });
+      \u0275\u0275element(15, "i", 16);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(16, "button", 17);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_16_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.resetZoom());
+      });
+      \u0275\u0275element(17, "i", 18);
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(18, "span", 11);
+      \u0275\u0275text(19, "|");
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(20, "div", 19)(21, "button", 20);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_21_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.toggleResize());
+      });
+      \u0275\u0275element(22, "i", 21);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(23, "button", 22);
+      \u0275\u0275listener("click", function ImageViewerComponent_Template_button_click_23_listener() {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.toggleCrop());
+      });
+      \u0275\u0275element(24, "i", 23);
+      \u0275\u0275elementEnd()();
+      \u0275\u0275elementStart(25, "span", 24);
+      \u0275\u0275text(26);
+      \u0275\u0275elementEnd()();
+      \u0275\u0275template(27, ImageViewerComponent_Conditional_27_Template, 11, 2, "div", 25)(28, ImageViewerComponent_Conditional_28_Template, 7, 0, "div", 26);
+      \u0275\u0275elementStart(29, "div", 27, 0)(31, "div", 28)(32, "canvas", 29, 1);
+      \u0275\u0275listener("mousedown", function ImageViewerComponent_Template_canvas_mousedown_32_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onMouseDown($event));
+      })("mousemove", function ImageViewerComponent_Template_canvas_mousemove_32_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onMouseMove($event));
+      })("mouseup", function ImageViewerComponent_Template_canvas_mouseup_32_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onMouseUp($event));
+      })("mouseleave", function ImageViewerComponent_Template_canvas_mouseleave_32_listener($event) {
+        \u0275\u0275restoreView(_r1);
+        return \u0275\u0275resetView(ctx.onMouseUp($event));
+      });
+      \u0275\u0275elementEnd();
+      \u0275\u0275template(34, ImageViewerComponent_Conditional_34_Template, 1, 8, "div", 30);
+      \u0275\u0275elementEnd();
+      \u0275\u0275template(35, ImageViewerComponent_Conditional_35_Template, 2, 0, "div", 31)(36, ImageViewerComponent_Conditional_36_Template, 2, 0, "div", 32);
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(37, "div", 33);
+      \u0275\u0275text(38);
+      \u0275\u0275pipe(39, "number");
+      \u0275\u0275elementEnd()();
+    }
+    if (rf & 2) {
+      \u0275\u0275advance(21);
+      \u0275\u0275classProp("active", ctx.showResizePanel());
+      \u0275\u0275advance(2);
+      \u0275\u0275classProp("active", ctx.isCropping());
+      \u0275\u0275advance(3);
+      \u0275\u0275textInterpolate(ctx.fileName());
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.showResizePanel() ? 27 : -1);
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.isCropping() ? 28 : -1);
+      \u0275\u0275advance(3);
+      \u0275\u0275styleProp("transform", "scale(" + ctx.zoomLevel() + ")")("transform-origin", "top left");
+      \u0275\u0275advance(3);
+      \u0275\u0275conditional(ctx.isCropping() && ctx.selectionRect ? 34 : -1);
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.loading() ? 35 : -1);
+      \u0275\u0275advance();
+      \u0275\u0275conditional(ctx.error() ? 36 : -1);
+      \u0275\u0275advance(2);
+      \u0275\u0275textInterpolate3(" ", ctx.imageDimensions().width, " x ", ctx.imageDimensions().height, " px | ", \u0275\u0275pipeBind2(39, 17, ctx.zoomLevel() * 100, "1.0-0"), "% ");
+    }
+  }, dependencies: [CommonModule, DecimalPipe, FormsModule, DefaultValueAccessor, NumberValueAccessor, NgControlStatus, NgModel], styles: ['\n\n.viewer-container[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #1e1e1e;\n  color: #d4d4d4;\n  font-family: "Segoe UI", sans-serif;\n  overflow: hidden;\n  position: relative;\n}\n.toolbar[_ngcontent-%COMP%] {\n  background: #333333;\n  padding: 5px 10px;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  border-bottom: 1px solid #444;\n  z-index: 10;\n  flex-shrink: 0;\n}\n.file-ops[_ngcontent-%COMP%], \n.view-ops[_ngcontent-%COMP%], \n.edit-ops[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 5px;\n}\n.divider[_ngcontent-%COMP%] {\n  color: #555;\n}\n.tool-btn[_ngcontent-%COMP%] {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn[_ngcontent-%COMP%]:hover {\n  background: #444;\n  color: white;\n}\n.tool-btn.active[_ngcontent-%COMP%] {\n  background: #007fd4;\n  color: white;\n}\n.filename[_ngcontent-%COMP%] {\n  margin-left: auto;\n  font-size: 0.85rem;\n  color: #aaa;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.image-area[_ngcontent-%COMP%] {\n  flex: 1;\n  overflow: auto;\n  padding: 0;\n  background: #252526;\n  display: flex;\n  align-items: flex-start;\n  justify-content: flex-start;\n  position: relative;\n}\n.canvas-wrapper[_ngcontent-%COMP%] {\n  position: relative;\n  margin: 20px;\n  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);\n  background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PHBhdGggZD0iTTAgMGg1djVIMHpNNSA1aDV2NUg1eiIgZmlsbD0iIzMzMyIgZmlsbC1vcGFjaXR5PSIwLjMiLz48L3N2Zz4=);\n}\ncanvas[_ngcontent-%COMP%] {\n  display: block;\n  backface-visibility: hidden;\n}\n.loading[_ngcontent-%COMP%], \n.error-msg[_ngcontent-%COMP%] {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  transform: translate(-50%, -50%);\n  color: #888;\n}\n.error-msg[_ngcontent-%COMP%] {\n  color: #f48771;\n}\n.status-bar[_ngcontent-%COMP%] {\n  background: #007acc;\n  color: white;\n  padding: 2px 10px;\n  font-size: 0.75rem;\n  display: flex;\n  justify-content: flex-end;\n}\n.resize-panel[_ngcontent-%COMP%] {\n  position: absolute;\n  top: 40px;\n  right: 10px;\n  background: #252526;\n  border: 1px solid #333;\n  padding: 10px;\n  z-index: 20;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);\n}\n.resize-panel[_ngcontent-%COMP%]   .input-group[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.resize-panel[_ngcontent-%COMP%]   .input-group[_ngcontent-%COMP%]   label[_ngcontent-%COMP%] {\n  width: 50px;\n  font-size: 0.9rem;\n}\n.resize-panel[_ngcontent-%COMP%]   .input-group[_ngcontent-%COMP%]   input[_ngcontent-%COMP%] {\n  width: 80px;\n  padding: 4px;\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: white;\n}\n.crop-toolbar[_ngcontent-%COMP%] {\n  position: absolute;\n  top: 45px;\n  left: 50%;\n  transform: translateX(-50%);\n  background: #252526;\n  padding: 8px 15px;\n  border-radius: 20px;\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  z-index: 20;\n  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);\n  font-size: 0.9rem;\n}\n.btn-apply[_ngcontent-%COMP%], \n.btn-cancel[_ngcontent-%COMP%] {\n  padding: 4px 10px;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n  font-size: 0.85rem;\n}\n.btn-apply[_ngcontent-%COMP%] {\n  background: #007fd4;\n  color: white;\n}\n.btn-apply[_ngcontent-%COMP%]:hover {\n  background: #0060a0;\n}\n.btn-cancel[_ngcontent-%COMP%] {\n  background: #3c3c3c;\n  color: #ccc;\n}\n.btn-cancel[_ngcontent-%COMP%]:hover {\n  background: #4b4b4b;\n}\n.selection-rect[_ngcontent-%COMP%] {\n  position: absolute;\n  border: 2px dashed #007fd4;\n  background: rgba(0, 127, 212, 0.2);\n  pointer-events: none;\n}\n/*# sourceMappingURL=image-viewer.component.css.map */'] });
+};
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ImageViewerComponent, [{
+    type: Component,
+    args: [{ selector: "app-image-viewer", standalone: true, imports: [CommonModule, FormsModule], template: `
+    <div class="viewer-container">
+      <div class="toolbar">
+        <div class="file-ops">
+            <button class="tool-btn" (click)="openFile()" title="Open"><i class="fa-solid fa-folder-open"></i></button>
+            <button class="tool-btn" (click)="saveFile()" title="Save"><i class="fa-solid fa-floppy-disk"></i></button>
+            <button class="tool-btn" (click)="saveAs()" title="Save As"><i class="fa-solid fa-file-export"></i></button>
+        </div>
+        <span class="divider">|</span>
+        <div class="view-ops">
+           <button class="tool-btn" (click)="zoomIn()" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+           <button class="tool-btn" (click)="zoomOut()" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+           <button class="tool-btn" (click)="resetZoom()" title="Reset Zoom"><i class="fa-solid fa-compress"></i></button>
+        </div>
+        <span class="divider">|</span>
+        <div class="edit-ops">
+            <button class="tool-btn" (click)="toggleResize()" [class.active]="showResizePanel()" title="Resize"><i class="fa-solid fa-expand"></i></button>
+            <button class="tool-btn" (click)="toggleCrop()" [class.active]="isCropping()" title="Crop"><i class="fa-solid fa-crop"></i></button>
+        </div>
+        <span class="filename">{{ fileName() }}</span>
+      </div>
+
+      <!-- Resize Panel -->
+      @if (showResizePanel()) {
+        <div class="resize-panel">
+            <div class="input-group">
+                <label>Width:</label>
+                <input type="number" [(ngModel)]="resizeWidth">
+            </div>
+            <div class="input-group">
+                <label>Height:</label>
+                <input type="number" [(ngModel)]="resizeHeight">
+            </div>
+            <button class="btn-apply" (click)="applyResize()">Apply</button>
+        </div>
+      }
+
+      <!-- Crop Toolbar -->
+      @if (isCropping()) {
+        <div class="crop-toolbar">
+            <span>Select area to crop</span>
+            <button class="btn-apply" (click)="applyCrop()">Apply Crop</button>
+            <button class="btn-cancel" (click)="cancelCrop()">Cancel</button>
+        </div>
+      }
+
+      <div class="image-area" #scrollContainer>
+        <div class="canvas-wrapper" [style.transform]="'scale(' + zoomLevel() + ')'" [style.transform-origin]="'top left'">
+            <canvas #canvas 
+                (mousedown)="onMouseDown($event)" 
+                (mousemove)="onMouseMove($event)" 
+                (mouseup)="onMouseUp($event)"
+                (mouseleave)="onMouseUp($event)"></canvas>
+            
+            @if (isCropping() && selectionRect) {
+                <div class="selection-rect"
+                    [style.left.px]="selectionRect.x"
+                    [style.top.px]="selectionRect.y"
+                    [style.width.px]="selectionRect.w"
+                    [style.height.px]="selectionRect.h">
+                </div>
+            }
+        </div>
+        
+        @if (loading()) {
+            <div class="loading">Loading image...</div>
+        }
+        @if (error()) {
+            <div class="error-msg">Failed to load image</div>
+        }
+      </div>
+      
+      <div class="status-bar">
+        {{ imageDimensions().width }} x {{ imageDimensions().height }} px | {{ zoomLevel() * 100 | number:'1.0-0' }}%
+      </div>
+    </div>
+  `, styles: ['/* angular:styles/component:css;f763f225b9a2b6e052935dc3f160dcb9b46a10864f09c8ef8a4e48d125c1ee14;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/apps/image-viewer/image-viewer.component.ts */\n.viewer-container {\n  display: flex;\n  flex-direction: column;\n  height: 100%;\n  background: #1e1e1e;\n  color: #d4d4d4;\n  font-family: "Segoe UI", sans-serif;\n  overflow: hidden;\n  position: relative;\n}\n.toolbar {\n  background: #333333;\n  padding: 5px 10px;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  border-bottom: 1px solid #444;\n  z-index: 10;\n  flex-shrink: 0;\n}\n.file-ops,\n.view-ops,\n.edit-ops {\n  display: flex;\n  gap: 5px;\n}\n.divider {\n  color: #555;\n}\n.tool-btn {\n  background: transparent;\n  border: none;\n  color: #ccc;\n  cursor: pointer;\n  padding: 5px;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 30px;\n  height: 30px;\n}\n.tool-btn:hover {\n  background: #444;\n  color: white;\n}\n.tool-btn.active {\n  background: #007fd4;\n  color: white;\n}\n.filename {\n  margin-left: auto;\n  font-size: 0.85rem;\n  color: #aaa;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.image-area {\n  flex: 1;\n  overflow: auto;\n  padding: 0;\n  background: #252526;\n  display: flex;\n  align-items: flex-start;\n  justify-content: flex-start;\n  position: relative;\n}\n.canvas-wrapper {\n  position: relative;\n  margin: 20px;\n  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);\n  background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PHBhdGggZD0iTTAgMGg1djVIMHpNNSA1aDV2NUg1eiIgZmlsbD0iIzMzMyIgZmlsbC1vcGFjaXR5PSIwLjMiLz48L3N2Zz4=);\n}\ncanvas {\n  display: block;\n  backface-visibility: hidden;\n}\n.loading,\n.error-msg {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  transform: translate(-50%, -50%);\n  color: #888;\n}\n.error-msg {\n  color: #f48771;\n}\n.status-bar {\n  background: #007acc;\n  color: white;\n  padding: 2px 10px;\n  font-size: 0.75rem;\n  display: flex;\n  justify-content: flex-end;\n}\n.resize-panel {\n  position: absolute;\n  top: 40px;\n  right: 10px;\n  background: #252526;\n  border: 1px solid #333;\n  padding: 10px;\n  z-index: 20;\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);\n}\n.resize-panel .input-group {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.resize-panel .input-group label {\n  width: 50px;\n  font-size: 0.9rem;\n}\n.resize-panel .input-group input {\n  width: 80px;\n  padding: 4px;\n  background: #3c3c3c;\n  border: 1px solid #555;\n  color: white;\n}\n.crop-toolbar {\n  position: absolute;\n  top: 45px;\n  left: 50%;\n  transform: translateX(-50%);\n  background: #252526;\n  padding: 8px 15px;\n  border-radius: 20px;\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  z-index: 20;\n  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);\n  font-size: 0.9rem;\n}\n.btn-apply,\n.btn-cancel {\n  padding: 4px 10px;\n  border: none;\n  border-radius: 4px;\n  cursor: pointer;\n  font-size: 0.85rem;\n}\n.btn-apply {\n  background: #007fd4;\n  color: white;\n}\n.btn-apply:hover {\n  background: #0060a0;\n}\n.btn-cancel {\n  background: #3c3c3c;\n  color: #ccc;\n}\n.btn-cancel:hover {\n  background: #4b4b4b;\n}\n.selection-rect {\n  position: absolute;\n  border: 2px dashed #007fd4;\n  background: rgba(0, 127, 212, 0.2);\n  pointer-events: none;\n}\n/*# sourceMappingURL=image-viewer.component.css.map */\n'] }]
+  }], null, { initialFileName: [{
+    type: Input
+  }], currentPath: [{
+    type: Input
+  }], canvasRef: [{
+    type: ViewChild,
+    args: ["canvas"]
+  }] });
+})();
+(() => {
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(ImageViewerComponent, { className: "ImageViewerComponent", filePath: "src/app/components/apps/image-viewer/image-viewer.component.ts", lineNumber: 241 });
 })();
 
 // src/app/components/os/desktop/desktop.component.ts
-var _forTrack04 = ($index, $item) => $item.id;
+var _forTrack07 = ($index, $item) => $item.id;
 function DesktopComponent_For_2_Template(rf, ctx) {
   if (rf & 1) {
     \u0275\u0275element(0, "app-window-frame", 1);
@@ -26713,7 +29305,7 @@ function DesktopComponent_For_2_Template(rf, ctx) {
     \u0275\u0275property("config", window_r1);
   }
 }
-function DesktopComponent_Conditional_12_Template(rf, ctx) {
+function DesktopComponent_Conditional_15_Template(rf, ctx) {
   if (rf & 1) {
     \u0275\u0275element(0, "app-start-menu");
   }
@@ -26721,6 +29313,36 @@ function DesktopComponent_Conditional_12_Template(rf, ctx) {
 var DesktopComponent = class _DesktopComponent {
   wm = inject(WindowManagerService);
   settings = inject(SettingsService);
+  registry = inject(AppRegistryService);
+  constructor() {
+    this.registerApps();
+  }
+  registerApps() {
+    this.registry.registerApp({
+      id: "text-editor",
+      name: "Text Editor",
+      component: TextEditorComponent,
+      icon: "fa-solid fa-file-lines",
+      isFileHandler: true,
+      supports: ["txt", "md", "json", "js", "ts", "html", "css", "py", "java", "cs", "xml", "yaml", "yml", "ini", "log"]
+    });
+    this.registry.registerApp({
+      id: "image-viewer",
+      name: "Image Viewer",
+      component: ImageViewerComponent,
+      icon: "fa-solid fa-image",
+      isFileHandler: true,
+      supports: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"]
+    });
+    this.registry.registerApp({
+      id: "browser",
+      name: "Browser",
+      component: BrowserComponent,
+      icon: "fa-brands fa-firefox-browser",
+      isFileHandler: false,
+      supports: ["html", "htm"]
+    });
+  }
   openFileExplorer() {
     this.wm.openApp("file-explorer", FileExplorerComponent, "File Explorer", "fa-solid fa-folder-open");
   }
@@ -26728,7 +29350,7 @@ var DesktopComponent = class _DesktopComponent {
     this.wm.openApp("terminal", TerminalComponent, "Terminal", "fa-solid fa-terminal");
   }
   openProcessManager() {
-    this.wm.openApp("process-manager", ProcessManagerComponent, "Task Manager", "fa-solid fa-chart-line");
+    this.wm.openApp("process-manager", ProcessManagerComponent, "Process Manager", "fa-solid fa-chart-line");
   }
   openTextEditor() {
     this.wm.openApp("text-editor", TextEditorComponent, "Text Editor", "fa-solid fa-file-lines");
@@ -26745,13 +29367,22 @@ var DesktopComponent = class _DesktopComponent {
   openExtensionManager() {
     this.wm.openApp("extension-manager", ExtensionManagerComponent, "Extensions", "fa-solid fa-puzzle-piece");
   }
+  openImageViewer() {
+    this.wm.openApp("image-viewer", ImageViewerComponent, "Image Viewer", "fa-solid fa-image");
+  }
+  openServiceManager() {
+    this.wm.openApp("service-manager", ServiceManagerComponent, "Service Manager", "fa-solid fa-server");
+  }
+  openFileTransfer() {
+    this.wm.openApp("file-transfer", FileTransferComponent, "File Transfer", "fa-solid fa-right-left");
+  }
   static \u0275fac = function DesktopComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _DesktopComponent)();
   };
-  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _DesktopComponent, selectors: [["app-desktop"]], decls: 14, vars: 2, consts: [[1, "desktop-wallpaper", 3, "ngStyle"], [3, "config"], [1, "desktop-icons"], ["label", "File Explorer", "icon", "fa-solid fa-folder-open", 3, "dblclick"], ["label", "Terminal", "icon", "fa-solid fa-terminal", 3, "dblclick"], ["label", "Task Manager", "icon", "fa-solid fa-chart-line", 3, "dblclick"], ["label", "Text Editor", "icon", "fa-solid fa-file-lines", 3, "dblclick"], ["label", "Browser", "icon", "fa-brands fa-firefox-browser", 3, "dblclick"], ["label", "Calculator", "icon", "fa-solid fa-calculator", 3, "dblclick"], ["label", "Extensions", "icon", "fa-solid fa-puzzle-piece", 3, "dblclick"], ["label", "Settings", "icon", "fa-solid fa-gear", 3, "dblclick"]], template: function DesktopComponent_Template(rf, ctx) {
+  static \u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _DesktopComponent, selectors: [["app-desktop"]], decls: 17, vars: 2, consts: [[1, "desktop-wallpaper", 3, "ngStyle"], [3, "config"], [1, "desktop-icons"], ["label", "File Explorer", "icon", "fa-solid fa-folder-open", 3, "dblclick"], ["label", "Terminal", "icon", "fa-solid fa-terminal", 3, "dblclick"], ["label", "Process Manager", "icon", "fa-solid fa-chart-line", 3, "dblclick"], ["label", "Text Editor", "icon", "fa-solid fa-file-lines", 3, "dblclick"], ["label", "Browser", "icon", "fa-brands fa-firefox-browser", 3, "dblclick"], ["label", "Calculator", "icon", "fa-solid fa-calculator", 3, "dblclick"], ["label", "Extensions", "icon", "fa-solid fa-puzzle-piece", 3, "dblclick"], ["label", "Image Viewer", "icon", "fa-solid fa-image", 3, "dblclick"], ["label", "Settings", "icon", "fa-solid fa-gear", 3, "dblclick"], ["label", "Service Manager", "icon", "fa-solid fa-server", 3, "dblclick"], ["label", "File Transfer", "icon", "fa-solid fa-right-left", 3, "dblclick"]], template: function DesktopComponent_Template(rf, ctx) {
     if (rf & 1) {
       \u0275\u0275elementStart(0, "div", 0);
-      \u0275\u0275repeaterCreate(1, DesktopComponent_For_2_Template, 1, 1, "app-window-frame", 1, _forTrack04);
+      \u0275\u0275repeaterCreate(1, DesktopComponent_For_2_Template, 1, 1, "app-window-frame", 1, _forTrack07);
       \u0275\u0275elementStart(3, "div", 2)(4, "app-desktop-icon", 3);
       \u0275\u0275listener("dblclick", function DesktopComponent_Template_app_desktop_icon_dblclick_4_listener() {
         return ctx.openFileExplorer();
@@ -26789,19 +29420,34 @@ var DesktopComponent = class _DesktopComponent {
       \u0275\u0275elementEnd();
       \u0275\u0275elementStart(11, "app-desktop-icon", 10);
       \u0275\u0275listener("dblclick", function DesktopComponent_Template_app_desktop_icon_dblclick_11_listener() {
+        return ctx.openImageViewer();
+      });
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(12, "app-desktop-icon", 11);
+      \u0275\u0275listener("dblclick", function DesktopComponent_Template_app_desktop_icon_dblclick_12_listener() {
         return ctx.openSettings();
       });
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(13, "app-desktop-icon", 12);
+      \u0275\u0275listener("dblclick", function DesktopComponent_Template_app_desktop_icon_dblclick_13_listener() {
+        return ctx.openServiceManager();
+      });
+      \u0275\u0275elementEnd();
+      \u0275\u0275elementStart(14, "app-desktop-icon", 13);
+      \u0275\u0275listener("dblclick", function DesktopComponent_Template_app_desktop_icon_dblclick_14_listener() {
+        return ctx.openFileTransfer();
+      });
       \u0275\u0275elementEnd()();
-      \u0275\u0275template(12, DesktopComponent_Conditional_12_Template, 1, 0, "app-start-menu");
-      \u0275\u0275element(13, "app-taskbar");
+      \u0275\u0275template(15, DesktopComponent_Conditional_15_Template, 1, 0, "app-start-menu");
+      \u0275\u0275element(16, "app-taskbar");
       \u0275\u0275elementEnd();
     }
     if (rf & 2) {
       \u0275\u0275property("ngStyle", ctx.settings.getBackgroundStyle());
       \u0275\u0275advance();
       \u0275\u0275repeater(ctx.wm.windows());
-      \u0275\u0275advance(11);
-      \u0275\u0275conditional(ctx.wm.showStartMenu() ? 12 : -1);
+      \u0275\u0275advance(14);
+      \u0275\u0275conditional(ctx.wm.showStartMenu() ? 15 : -1);
     }
   }, dependencies: [CommonModule, NgStyle, TaskbarComponent, WindowFrameComponent, DesktopIconComponent, StartMenuComponent], styles: ["\n\n.desktop-wallpaper[_ngcontent-%COMP%] {\n  width: 100vw;\n  height: 100vh;\n  background-size: cover;\n  background-position: center;\n  position: relative;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n  transition: background 0.5s ease;\n}\n.desktop-icons[_ngcontent-%COMP%] {\n  position: absolute;\n  top: 10px;\n  left: 10px;\n  bottom: var(--taskbar-height);\n  display: flex;\n  flex-direction: column;\n  flex-wrap: wrap;\n  align-content: flex-start;\n  gap: 10px;\n  max-height: 100%;\n}\n/*# sourceMappingURL=desktop.component.css.map */"] });
 };
@@ -26818,12 +29464,15 @@ var DesktopComponent = class _DesktopComponent {
       <div class="desktop-icons">
         <app-desktop-icon label="File Explorer" icon="fa-solid fa-folder-open" (dblclick)="openFileExplorer()"></app-desktop-icon>
         <app-desktop-icon label="Terminal" icon="fa-solid fa-terminal" (dblclick)="openTerminal()"></app-desktop-icon>
-        <app-desktop-icon label="Task Manager" icon="fa-solid fa-chart-line" (dblclick)="openProcessManager()"></app-desktop-icon>
+        <app-desktop-icon label="Process Manager" icon="fa-solid fa-chart-line" (dblclick)="openProcessManager()"></app-desktop-icon>
         <app-desktop-icon label="Text Editor" icon="fa-solid fa-file-lines" (dblclick)="openTextEditor()"></app-desktop-icon>
         <app-desktop-icon label="Browser" icon="fa-brands fa-firefox-browser" (dblclick)="openBrowser()"></app-desktop-icon>
         <app-desktop-icon label="Calculator" icon="fa-solid fa-calculator" (dblclick)="openCalculator()"></app-desktop-icon>
         <app-desktop-icon label="Extensions" icon="fa-solid fa-puzzle-piece" (dblclick)="openExtensionManager()"></app-desktop-icon>
+        <app-desktop-icon label="Image Viewer" icon="fa-solid fa-image" (dblclick)="openImageViewer()"></app-desktop-icon>
         <app-desktop-icon label="Settings" icon="fa-solid fa-gear" (dblclick)="openSettings()"></app-desktop-icon>
+        <app-desktop-icon label="Service Manager" icon="fa-solid fa-server" (dblclick)="openServiceManager()"></app-desktop-icon>
+        <app-desktop-icon label="File Transfer" icon="fa-solid fa-right-left" (dblclick)="openFileTransfer()"></app-desktop-icon>
       </div>
 
       @if (wm.showStartMenu()) {
@@ -26833,10 +29482,10 @@ var DesktopComponent = class _DesktopComponent {
       <app-taskbar></app-taskbar>
     </div>
   `, styles: ["/* angular:styles/component:css;ed4b321a84ea54f501fe68b8758bf6b6c45442d10a995f37dbba5e9137d53ba0;/home/abhijit/Documents/ghrepos/ContainerUIWeb/Frontend/src/app/components/os/desktop/desktop.component.ts */\n.desktop-wallpaper {\n  width: 100vw;\n  height: 100vh;\n  background-size: cover;\n  background-position: center;\n  position: relative;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n  transition: background 0.5s ease;\n}\n.desktop-icons {\n  position: absolute;\n  top: 10px;\n  left: 10px;\n  bottom: var(--taskbar-height);\n  display: flex;\n  flex-direction: column;\n  flex-wrap: wrap;\n  align-content: flex-start;\n  gap: 10px;\n  max-height: 100%;\n}\n/*# sourceMappingURL=desktop.component.css.map */\n"] }]
-  }], null, null);
+  }], () => [], null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(DesktopComponent, { className: "DesktopComponent", filePath: "src/app/components/os/desktop/desktop.component.ts", lineNumber: 75 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(DesktopComponent, { className: "DesktopComponent", filePath: "src/app/components/os/desktop/desktop.component.ts", lineNumber: 82 });
 })();
 
 // src/app/app.routes.ts
@@ -26851,6 +29500,10 @@ var appConfig = {
 
 // src/app/app.component.ts
 var AppComponent = class _AppComponent {
+  extService = inject(ExtensionService);
+  constructor() {
+    this.extService.loadExtensions();
+  }
   static \u0275fac = function AppComponent_Factory(__ngFactoryType__) {
     return new (__ngFactoryType__ || _AppComponent)();
   };
@@ -26864,10 +29517,10 @@ var AppComponent = class _AppComponent {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(AppComponent, [{
     type: Component,
     args: [{ selector: "app-root", imports: [RouterOutlet], template: "<router-outlet></router-outlet>\r\n" }]
-  }], null, null);
+  }], () => [], null);
 })();
 (() => {
-  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(AppComponent, { className: "AppComponent", filePath: "src/app/app.component.ts", lineNumber: 10 });
+  (typeof ngDevMode === "undefined" || ngDevMode) && \u0275setClassDebugInfo(AppComponent, { className: "AppComponent", filePath: "src/app/app.component.ts", lineNumber: 11 });
 })();
 
 // src/main.ts

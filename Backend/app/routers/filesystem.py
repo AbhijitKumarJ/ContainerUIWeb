@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 import os
 from datetime import datetime
 from ..models.file_node import FileNode
@@ -118,6 +119,24 @@ async def readfile(path: str):
     except Exception as e:
         return {"error": str(e)}
 
+@router.get("/serve")
+async def serve_file(path: str):
+    try:
+        print('Backend called serve_file: path = ' + path)
+        path = handlepathquirks(path)
+        print(path)
+
+        if not os.path.exists(path):
+            return {"error": "File does not exist"}
+        
+        if not os.path.isfile(path):
+            return {"error": "Path is not a file"}
+
+        return FileResponse(path)
+
+    except Exception as e:
+        return {"error": str(e)}
+
 from pydantic import BaseModel
 
 class WriteFileRequest(BaseModel):
@@ -199,10 +218,14 @@ async def delete_item(path: str):
 @router.post("/copy")
 async def copy_item(request: CopyMoveRequest):
     try:
-        print('Backend called copy_item: request.path = ' + request.path)
+        print('Backend called copy_item: request.source = ' + request.source)
+        print('Backend called copy_item: request.destination = ' + request.destination)
         
-        request.path = handlepathquirks(request.path)
-        print(request.path)
+        request.source = handlepathquirks(request.source)
+        request.destination = handlepathquirks(request.destination)
+        
+        print(request.source)
+        print(request.destination)
 
         if not os.path.exists(request.source):
              return {"error": "Source does not exist"}
@@ -219,16 +242,44 @@ async def copy_item(request: CopyMoveRequest):
     except Exception as e:
         return {"error": str(e)}
 
+import base64
+
+class SaveImageRequest(BaseModel):
+    path: str
+    image_data: str # Base64 encoded
+
+@router.post("/save_image")
+async def save_image(request: SaveImageRequest):
+    try:
+        print('Backend called save_image: request.path = ' + request.path)
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
+        # Remove header if present (e.g., "data:image/png;base64,")
+        if ',' in request.image_data:
+            header, encoded = request.image_data.split(',', 1)
+        else:
+            encoded = request.image_data
+            
+        data = base64.b64decode(encoded)
+
+        with open(request.path, 'wb') as f:
+            f.write(data)
+        
+        return {"success": True, "path": request.path}
+
+    except Exception as e:
+        print(f"Error saving image: {e}")
+        return {"error": str(e)}
+
 @router.post("/move")
 async def move_item(request: CopyMoveRequest):
     try:
         print('Backend called move_item: request.source = ' + request.source)
         print('Backend called move_item: request.destination = ' + request.destination)
-
         
         request.source = handlepathquirks(request.source)
         print(request.source)
-
         
         request.destination = handlepathquirks(request.destination)
         print(request.destination)
@@ -241,5 +292,58 @@ async def move_item(request: CopyMoveRequest):
 
         shutil.move(request.source, request.destination)
         return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+class CompressRequest(BaseModel):
+    path: str
+
+@router.post("/compress")
+async def compress_item(request: CompressRequest):
+    try:
+        print('Backend called compress_item: request.path = ' + request.path)
+        
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
+        if not os.path.exists(request.path):
+             return {"error": "Path does not exist"}
+        
+        if not os.path.isdir(request.path):
+             return {"error": "Path is not a directory"}
+
+        # Define output filename (sibling to the directory)
+        base_name = request.path
+        root_dir = os.path.dirname(request.path)
+        base_dir = os.path.basename(request.path)
+
+        shutil.make_archive(base_name, 'zip', root_dir, base_dir)
+        
+        return {"success": True, "path": base_name + ".zip"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.post("/decompress")
+async def decompress_item(request: CompressRequest):
+    try:
+        print('Backend called decompress_item: request.path = ' + request.path)
+        
+        request.path = handlepathquirks(request.path)
+        print(request.path)
+
+        if not os.path.exists(request.path):
+             return {"error": "Path does not exist"}
+        
+        if not os.path.isfile(request.path):
+             return {"error": "Path is not a file"}
+        
+        if not request.path.lower().endswith('.zip'):
+             return {"error": "File is not a zip archive"}
+
+        # Define output directory (directory with same name as zip)
+        base_name = os.path.splitext(request.path)[0]
+        
+        shutil.unpack_archive(request.path, base_name, 'zip')
+        
+        return {"success": True, "path": base_name}
     except Exception as e:
         return {"error": str(e)}

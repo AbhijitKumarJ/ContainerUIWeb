@@ -4,6 +4,8 @@
     "version": "1.0.0",
     "entryPoint": "index.html",
     "icon": "fa-solid fa-flask",
+    "IsFileHandler": false,
+    "AssociatedFileExtensions": [],
     "defaultSize": {
         "width": 600,
         "height": 400

@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { WindowManagerService } from '../../../services/window-manager.service';
 import { ExtensionLoaderComponent } from '../../os/extension-loader/extension-loader.component';
+import { ExtensionService } from '../../../services/extension.service';
 
 interface Extension {
   id: string;
@@ -38,6 +39,7 @@ interface Extension {
           </div>
           <div class="actions">
             <button (click)="launch(ext)">Launch</button>
+            <button class="remove-btn" (click)="removeExtension(ext.id)">Remove</button>
           </div>
         </div>
         
@@ -69,16 +71,21 @@ interface Extension {
       padding: 8px 12px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; 
     }
     button:hover { background: #0056b3; }
+    .remove-btn { background: #dc3545; margin-left: 5px; }
+    .remove-btn:hover { background: #bd2130; }
   `]
 })
 export class ExtensionManagerComponent implements OnInit {
   extensions: Extension[] = [];
   http = inject(HttpClient);
   wm = inject(WindowManagerService);
+  extService = inject(ExtensionService);
   apiUrl = 'http://localhost:8000/api/extensions';
 
   ngOnInit() {
     this.loadExtensions();
+    // Also refresh registry to be sure
+    this.extService.refresh();
   }
 
   loadExtensions() {
@@ -98,6 +105,7 @@ export class ExtensionManagerComponent implements OnInit {
       next: (res) => {
         alert('Extension installed!');
         this.loadExtensions();
+        this.extService.refresh();
       },
       error: (err) => {
         alert('Failed to install: ' + err.error?.detail || err.message);
@@ -111,8 +119,22 @@ export class ExtensionManagerComponent implements OnInit {
       ExtensionLoaderComponent,
       ext.name,
       ext.icon || 'fa-solid fa-puzzle-piece',
-      { url: ext.url, extId: ext.id }, // Correctly pass inputs
+      { url: ext.url, extId: ext.id },
       ext.defaultSize ? ext.defaultSize : { width: 800, height: 600 }
     );
+  }
+
+  removeExtension(id: string) {
+    if (confirm('Are you sure you want to remove this extension?')) {
+      this.http.delete(`${this.apiUrl}/${id}`).subscribe({
+        next: () => {
+          this.loadExtensions();
+          this.extService.refresh();
+        },
+        error: (err) => {
+          alert('Failed to remove extension: ' + (err.error?.detail || err.message));
+        }
+      });
+    }
   }
 }

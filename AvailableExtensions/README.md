@@ -42,6 +42,8 @@ Configuration file defining the extension's identity and behavior.
     "version": "1.0.0",                   // Version
     "entryPoint": "index.html",           // Main HTML file to load
     "icon": "fa-solid fa-puzzle-piece",   // FontAwesome icon class
+    "IsFileHandler": false,               // Whether the extension can handle files
+    "AssociatedFileExtensions": [],       // File extensions associated with the extension like .txt, .py, .js, .html, .css, .cs, .java, .rb, .log, .json, .md, .csv, .xml, .sql, .json, .json, .json
     "defaultSize": {                      // Initial Window Size
         "width": 800,
         "height": 600

@@ -151,3 +151,12 @@ async function saveFile() {
 }
 
 btnSave.addEventListener('click', saveFile);
+
+// Listen for commands from Host
+window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (data.action === 'OPEN_FILE') {
+        const { path, filename } = data.payload;
+        loadFile(path, filename);
+    }
+});

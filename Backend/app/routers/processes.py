@@ -27,3 +27,15 @@ async def list_processes():
     # Sort by cpu usage desc
     processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
     return processes
+
+@router.delete("/kill/{pid}")
+async def kill_process(pid: int):
+    try:
+        proc = psutil.Process(pid)
+        proc.terminate()
+        return {"status": "success", "message": f"Process {pid} terminated"}
+    except psutil.NoSuchProcess:
+        return {"status": "error", "message": "Process not found"}
+    except psutil.AccessDenied:
+        return {"status": "error", "message": "Access denied"}
+

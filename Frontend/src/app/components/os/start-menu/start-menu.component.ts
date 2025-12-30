@@ -4,9 +4,11 @@ import { WindowManagerService } from '../../../services/window-manager.service';
 import { FileExplorerComponent } from '../../apps/file-explorer/file-explorer.component';
 import { TerminalComponent } from '../../apps/terminal/terminal.component';
 import { ProcessManagerComponent } from '../../apps/process-manager/process-manager.component';
+import { ServiceManagerComponent } from '../../apps/service-manager/service-manager.component';
 import { TextEditorComponent } from '../../apps/text-editor/text-editor.component';
 import { BrowserComponent } from '../../apps/browser/browser.component';
 import { CalculatorComponent } from '../../apps/calculator/calculator.component';
+import { FileTransferComponent } from '../../apps/file-transfer/file-transfer.component';
 
 @Component({
   selector: 'app-start-menu',
@@ -31,9 +33,14 @@ import { CalculatorComponent } from '../../apps/calculator/calculator.component'
              <span>Terminal</span>
            </div>
 
-           <div class="app-item" (click)="launch('process-manager', pmComp, 'Task Manager', 'fa-solid fa-chart-line')">
+           <div class="app-item" (click)="launch('process-manager', pmComp, 'Process Manager', 'fa-solid fa-chart-line')">
              <div class="icon-box"><i class="fa-solid fa-chart-line"></i></div>
              <span>System Monitor</span>
+           </div>
+
+           <div class="app-item" (click)="launch('service-manager', smComp, 'Service Manager', 'fa-solid fa-server')">
+             <div class="icon-box"><i class="fa-solid fa-server"></i></div>
+             <span>Services</span>
            </div>
 
            <div class="app-item" (click)="launch('text-editor', txtComp, 'Text Editor', 'fa-solid fa-file-lines')">
@@ -49,6 +56,11 @@ import { CalculatorComponent } from '../../apps/calculator/calculator.component'
            <div class="app-item" (click)="launch('calculator', calcComp, 'Calculator', 'fa-solid fa-calculator')">
              <div class="icon-box"><i class="fa-solid fa-calculator"></i></div>
              <span>Calculator</span>
+           </div>
+
+           <div class="app-item" (click)="launch('file-transfer', ftComp, 'File Transfer', 'fa-solid fa-right-left')">
+             <div class="icon-box"><i class="fa-solid fa-right-left"></i></div>
+             <span>File Transfer</span>
            </div>
         </div>
       </div>
@@ -151,9 +163,11 @@ export class StartMenuComponent {
   feComp = FileExplorerComponent;
   termComp = TerminalComponent;
   pmComp = ProcessManagerComponent;
+  smComp = ServiceManagerComponent;
   txtComp = TextEditorComponent;
   brwComp = BrowserComponent;
   calcComp = CalculatorComponent;
+  ftComp = FileTransferComponent;
 
   close() {
     this.wm.toggleStartMenu();

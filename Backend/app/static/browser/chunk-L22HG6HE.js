@@ -38227,6 +38227,28 @@ var FileSystemService = class _FileSystemService {
       destination: destPath
     });
   }
+  saveImage(path, base64Data) {
+    return this.http.post(`${this.apiUrl}/api/filesystem/save_image`, {
+      path,
+      image_data: base64Data
+    });
+  }
+  compressItem(path) {
+    return this.ensureRoot().pipe(switchMap(() => {
+      const fullPath = this.getFullPath(path);
+      return this.http.post(`${this.apiUrl}/api/filesystem/compress`, {
+        path: fullPath
+      });
+    }));
+  }
+  decompressItem(path) {
+    return this.ensureRoot().pipe(switchMap(() => {
+      const fullPath = this.getFullPath(path);
+      return this.http.post(`${this.apiUrl}/api/filesystem/decompress`, {
+        path: fullPath
+      });
+    }));
+  }
   formatSize(bytes) {
     if (bytes === 0)
       return "0 B";
@@ -38403,6 +38425,7 @@ export {
   ɵɵnextContext,
   ɵɵprojectionDef,
   ɵɵprojection,
+  ɵɵpropertyInterpolate,
   ɵɵcontentQuery,
   ɵɵviewQuery,
   ɵɵqueryRefresh,
@@ -38412,11 +38435,14 @@ export {
   ɵɵtextInterpolate,
   ɵɵtextInterpolate1,
   ɵɵtextInterpolate2,
+  ɵɵtextInterpolate3,
   ɵɵtwoWayProperty,
   ɵɵtwoWayBindingSet,
   ɵɵtwoWayListener,
   ɵɵProvidersFeature,
+  ɵɵpureFunction3,
   ɵɵpipe,
+  ɵɵpipeBind1,
   ɵɵpipeBind2,
   ɵsetClassDebugInfo,
   Directive,
@@ -38438,6 +38464,7 @@ export {
   internalCreateApplication,
   booleanAttribute,
   numberAttribute,
+  computed,
   effect,
   createComponent,
   reflectComponentType,
@@ -38455,7 +38482,9 @@ export {
   NgForOf,
   NgIf,
   NgStyle,
+  TitleCasePipe,
   DatePipe,
+  DecimalPipe,
   CommonModule,
   parseCookieValue,
   PLATFORM_BROWSER_ID,
@@ -38469,6 +38498,8 @@ export {
   DefaultValueAccessor,
   NgControlStatus,
   NgModel,
+  NumberValueAccessor,
+  SelectControlValueAccessor,
   NgSelectOption,
   ɵNgSelectMultipleOption,
   FormsModule,
@@ -38509,4 +38540,4 @@ export {
    * found in the LICENSE file at https://angular.dev/license
    *)
 */
-//# sourceMappingURL=chunk-DRZDMB57.js.map
+//# sourceMappingURL=chunk-L22HG6HE.js.map

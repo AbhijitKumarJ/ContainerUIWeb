@@ -113,3 +113,22 @@ async def list_extensions():
             else:
                 print(f"       No manifest.json found in {item.name}")
     return extensions
+
+@router.delete("/{ext_id}")
+async def uninstall_extension(ext_id: str):
+    target_dir = EXT_DIR / ext_id
+    if not target_dir.exists():
+        raise HTTPException(status_code=404, detail="Extension not found")
+    
+    try:
+        if target_dir.is_dir():
+            shutil.rmtree(target_dir)
+        else:
+            # Should be a directory, but handle file case just in case
+            if target_dir.is_file(): # pragma: no cover
+                os.remove(target_dir)
+        
+        return {"success": True, "message": f"Extension {ext_id} uninstalled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
